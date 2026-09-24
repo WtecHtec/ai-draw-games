@@ -32,6 +32,8 @@ export class PvPService {
     this.selfReadyNext = false;
     /** 状态标识：对手是否已准备下一关 */
     this.opponentReadyNext = false;
+    /** 待开赛的目标关卡号 */
+    this.pendingNextStage = null;
 
     // 回调钩子
     this.onMatchFinish = null;
@@ -50,6 +52,7 @@ export class PvPService {
     this.opponentFinishTime = null;
     this.selfReadyNext = false;
     this.opponentReadyNext = false;
+    this.pendingNextStage = null;
     // 注意：opponentLeft 不在此重置，需在离开房间或新玩家加入时重置
   }
 
@@ -62,6 +65,7 @@ export class PvPService {
     this.opponentLeft = false;
     this.selfReadyNext = false;
     this.opponentReadyNext = false;
+    this.pendingNextStage = null;
     this.lastSyncTs = 0;
   }
 
@@ -104,17 +108,34 @@ export class PvPService {
       this.opponentLimbs = null;
       this.selfReadyNext = false;
       this.opponentReadyNext = false;
+      this.pendingNextStage = null;
       this.onRenderNeeded?.();
     });
 
     // 监听对手发来的“下一关就绪”信令
-    netClient.on('OPPONENT_STAGE_READY', () => {
+    netClient.on('OPPONENT_STAGE_READY', (data) => {
       this.opponentReadyNext = true;
+      if (data && typeof data.stage === 'number') {
+        this.pendingNextStage = data.stage;
+      }
       this.onRenderNeeded?.();
 
       // 若自己是房主且自己也已就绪，自动开赛进入下一关
       if (netClient.role === 'host' && this.selfReadyNext) {
-        this.triggerNextRace();
+        this.triggerNextRace(this.pendingNextStage);
+      }
+    });
+
+    // 监听服务端广播的重赛就绪信令
+    netClient.on('REMATCH_READY', (data) => {
+      this.opponentReadyNext = true;
+      if (data && typeof data.stage === 'number') {
+        this.pendingNextStage = data.stage;
+      }
+      this.onRenderNeeded?.();
+
+      if (netClient.role === 'host' && this.selfReadyNext) {
+        this.triggerNextRace(this.pendingNextStage);
       }
     });
 
@@ -124,6 +145,7 @@ export class PvPService {
       this.opponentLeft = false;
       this.selfReadyNext = false;
       this.opponentReadyNext = false;
+      this.pendingNextStage = null;
       this.onRaceStart?.(options);
     });
   }
@@ -156,7 +178,10 @@ export class PvPService {
 
     // 场景 2：双方仍在对战，准备进入下一关
     this.selfReadyNext = true;
-    const nextStage = (currentStage + 1) % STAGES.length;
+    const nextStage = typeof currentStage === 'number'
+      ? (currentStage + 1) % STAGES.length
+      : 0;
+    this.pendingNextStage = nextStage;
 
     // 向对手发送自己已就绪信令
     netClient.sendStageReady(nextStage);
@@ -165,11 +190,11 @@ export class PvPService {
     if (netClient.role === 'host') {
       // 房主：若对手已经就绪（或者对方也是准备状态），直接发起新关卡开赛
       if (this.opponentReadyNext) {
-        this.triggerNextRace(nextStage);
+        this.triggerNextRace(this.pendingNextStage);
       }
     } else {
-      // 客态：请求重赛/下一关
-      netClient.requestRematch();
+      // 客态：请求重赛/下一关，携带目标关卡
+      netClient.requestRematch(nextStage);
     }
   }
 

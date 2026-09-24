@@ -883,6 +883,32 @@
       }
     }
 
+    function updateStartButton() {
+      // 只有在 PK (双人对决) 模式下，才展示房间创建/加入状态引导
+      if (selectedMode !== 'pvp') {
+        startBtn.disabled = false;
+        startBtn.textContent = '开始游戏 →';
+        return;
+      }
+
+      // 仅在 PvP 模式下的分支状态：
+      if (!pvpState.inRoom) {
+        startBtn.disabled = true;
+        startBtn.textContent = '请先创建或加入房间';
+      } else if (pvpState.role === 'host') {
+        if (pvpState.isReady) {
+          startBtn.disabled = false;
+          startBtn.textContent = '🏁 开始对决！';
+        } else {
+          startBtn.disabled = true;
+          startBtn.textContent = '⏳ 等待对手加入...';
+        }
+      } else if (pvpState.role === 'guest') {
+        startBtn.disabled = true;
+        startBtn.textContent = '⏳ 等待房主开始比赛...';
+      }
+    }
+
     function selectMode(mode) {
       selectedMode = mode;
       cards.forEach(c => {
@@ -890,23 +916,26 @@
         c.classList.toggle('selected', active);
         c.setAttribute('aria-checked', String(active));
       });
+
       // 动态切换展开区
       apiSection.classList.toggle('visible', mode === 'jev');
       qwenSection.classList.toggle('visible', mode === 'qwen');
       pvpSection.classList.toggle('visible', mode === 'pvp');
 
+      // 核心：立即更新按钮状态（非 pvp 模式始终为“开始游戏 →”，只有 pvp 才会出现“请先创建房间”）
+      updateStartButton();
+
       if (mode === 'jev') {
+        if (window.__setGameConfig) window.__setGameConfig('jev', apiInput.value.trim() || DEFAULT_JEV_API_KEY, '');
         setTimeout(() => apiInput.focus(), 310);
       } else if (mode === 'qwen') {
+        if (window.__setGameConfig) window.__setGameConfig('qwen', '', '');
         ensureQwenLoaded();
       } else if (mode === 'pvp') {
         if (window.__setGameConfig) window.__setGameConfig('pvp', '', '');
         initPvPClient();
-        updatePvPStartButton();
       } else {
         if (window.__setGameConfig) window.__setGameConfig('system', '', '');
-        startBtn.disabled = false;
-        startBtn.textContent = '开始游戏 →';
       }
     }
 
@@ -934,25 +963,6 @@
         } catch (e) {
           console.warn('连接 WebSocket 对决服务失败，请确保 npm run server 正在运行:', e);
         }
-      }
-    }
-
-    function updatePvPStartButton() {
-      if (selectedMode !== 'pvp') return;
-      if (!pvpState.inRoom) {
-        startBtn.disabled = true;
-        startBtn.textContent = '请先创建或加入房间';
-      } else if (pvpState.role === 'host') {
-        if (pvpState.isReady) {
-          startBtn.disabled = false;
-          startBtn.textContent = '🏁 开始对决！';
-        } else {
-          startBtn.disabled = true;
-          startBtn.textContent = '⏳ 等待对手加入...';
-        }
-      } else if (pvpState.role === 'guest') {
-        startBtn.disabled = true;
-        startBtn.textContent = '⏳ 等待房主开始比赛...';
       }
     }
 
@@ -997,7 +1007,7 @@
       pvpLobbyActions.style.display = 'flex';
       pvpRoomInfo.style.display = 'none';
       pvpRoomCode.textContent = '----';
-      updatePvPStartButton();
+      updateStartButton();
     }
 
     // 监听网络信令
@@ -1016,7 +1026,7 @@
       pvpGuestLabel.textContent = '对手: 等待加入...';
       pvpGuestDot.className = 'pvp-dot guest waiting';
       pvpRoomTip.textContent = '等待挑战者输入房间码加入...';
-      updatePvPStartButton();
+      updateStartButton();
     });
 
     netClient.on('JOIN_SUCCESS', (data) => {
@@ -1035,7 +1045,7 @@
       pvpGuestLabel.textContent = `挑战者: ${data.guestName} (你)`;
       pvpGuestDot.className = 'pvp-dot guest';
       pvpRoomTip.textContent = '已成功进入房间，请等待房主开赛！';
-      updatePvPStartButton();
+      updateStartButton();
     });
 
     netClient.on('OPPONENT_JOINED', (data) => {
@@ -1044,7 +1054,7 @@
       pvpGuestLabel.textContent = `对手: ${data.guestName}`;
       pvpGuestDot.className = 'pvp-dot guest';
       pvpRoomTip.textContent = '✅ 对手已就绪，点击下方「开始对决！」发车！';
-      updatePvPStartButton();
+      updateStartButton();
     });
 
     netClient.on('OPPONENT_LEFT', (data) => {
@@ -1053,7 +1063,7 @@
       pvpGuestLabel.textContent = '对手: 等待加入...';
       pvpGuestDot.className = 'pvp-dot guest waiting';
       pvpRoomTip.textContent = data.message || '挑战者已离开房间，等待新玩家加入...';
-      updatePvPStartButton();
+      updateStartButton();
     });
 
     netClient.on('ROOM_CLOSED', (data) => {
@@ -1118,11 +1128,12 @@
       }, 450);
     });
 
-    window.__showStartOverlay = () => {
+    window.__showStartOverlay = (targetMode) => {
       overlay.style.display = 'flex';
       overlay.classList.remove('fade-out');
       resetPvPUI();
-      selectMode('pvp');
+      // 默认退回主菜单展示“开始游戏 →”，若显式指定模式则切换对应模式
+      selectMode(targetMode || 'system');
     };
 
     window.__hideStartOverlay = () => {
@@ -1147,6 +1158,8 @@
       document.getElementById('btn-clear')?.addEventListener('click', () => dp.applyClear());
     }
     bindButtons();
+    // 首次加载初始化为系统规则模式，确保展示“开始游戏 →”
+    selectMode('system');
   </script>
 
 </body>

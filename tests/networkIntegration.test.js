@@ -28,13 +28,13 @@ describe('PvP 全链路网络集成测试 (E2E Signaling & Sync)', () => {
               manager.joinRoom(ws, msg.roomId, msg.guestName);
               break;
             case 'START_RACE':
-              manager.startRace(ws);
+              manager.startRace(ws, msg.stage);
               break;
             case 'FINISH':
               manager.handleFinish(ws, msg.finishTime);
               break;
             case 'REMATCH':
-              manager.requestRematch(ws);
+              manager.requestRematch(ws, msg.stage);
               break;
             case 'LEAVE_ROOM':
               manager.leaveRoom(ws);

@@ -44,7 +44,7 @@ wss.on('connection', (ws) => {
           break;
 
         case 'REMATCH':
-          manager.requestRematch(ws);
+          manager.requestRematch(ws, msg.stage);
           break;
 
         case 'STAGE_READY':

@@ -131,4 +131,41 @@ describe('RoomManager 多房间隔离与生命周期管理测试', () => {
     expect(room.status).toBe('WAITING');
     expect(wsHost.getLastMessage().type).toBe('OPPONENT_LEFT');
   });
+
+  test('再战一局：startRace 传入 nextStage 能正确切换关卡并生成新随机种子', () => {
+    const room = manager.createRoom(wsHost, { stage: 0 });
+    manager.joinRoom(wsGuest, room.id);
+    manager.startRace(wsHost, 0);
+
+    const oldSeed = room.seed;
+    expect(room.stage).toBe(0);
+
+    // 房主发起再战下一关（第 1 关）
+    manager.startRace(wsHost, 1);
+    expect(room.stage).toBe(1);
+    expect(room.seed).toBeDefined();
+
+    const hostMsg = wsHost.getLastMessage();
+    expect(hostMsg.type).toBe('RACE_START');
+    expect(hostMsg.stage).toBe(1);
+
+    const guestMsg = wsGuest.getLastMessage();
+    expect(guestMsg.type).toBe('RACE_START');
+    expect(guestMsg.stage).toBe(1);
+  });
+
+  test('挑战者请求再战并带入 stage，服务端广播 REMATCH_READY 并更新 room.stage', () => {
+    const room = manager.createRoom(wsHost, { stage: 0 });
+    manager.joinRoom(wsGuest, room.id);
+    manager.startRace(wsHost, 0);
+
+    // 挑战者点击再战一局，目标关卡为 1
+    manager.requestRematch(wsGuest, 1);
+    expect(room.status).toBe('READY');
+    expect(room.stage).toBe(1);
+
+    const hostRematch = wsHost.getLastMessage();
+    expect(hostRematch.type).toBe('REMATCH_READY');
+    expect(hostRematch.stage).toBe(1);
+  });
 });

@@ -57,13 +57,10 @@ export class NetworkClient {
     if (!url) {
       let envUrl = '';
       try {
-        if (typeof process !== 'undefined' && process.env && process.env.VITE_WS_URL) {
-          envUrl = process.env.VITE_WS_URL.trim();
-        } else {
-          const metaEnv = (new Function('try { return import.meta.env; } catch(e) { return null; }'))();
-          if (metaEnv && metaEnv.VITE_WS_URL) {
-            envUrl = metaEnv.VITE_WS_URL.trim();
-          }
+        if (typeof __WS_URL__ !== 'undefined' && __WS_URL__) {
+          envUrl = String(__WS_URL__).trim();
+        } else if (typeof process !== 'undefined' && process.env && process.env.VITE_WS_URL) {
+          envUrl = String(process.env.VITE_WS_URL).trim();
         }
       } catch (e) {}
 
@@ -166,9 +163,9 @@ export class NetworkClient {
     this.send('FINISH', { finishTime });
   }
 
-  /** 申请重赛 */
-  requestRematch() {
-    this.send('REMATCH');
+  /** 申请重赛 (可指定目标关卡) */
+  requestRematch(stage) {
+    this.send('REMATCH', typeof stage === 'number' ? { stage } : {});
   }
 
   /** 主动退出房间 */

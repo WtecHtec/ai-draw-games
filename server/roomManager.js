@@ -156,8 +156,8 @@ export class RoomManager {
     return room;
   }
 
-  /** 房主发起开始比赛（生成统一随机地图种子） */
-  startRace(ws) {
+  /** 房主发起开始比赛（生成统一随机地图种子，并切换关卡） */
+  startRace(ws, nextStage) {
     const roomId = this.socketToRoom.get(ws);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
@@ -220,17 +220,21 @@ export class RoomManager {
     }
   }
 
-  /** 请求再来一局（再战模式） */
-  requestRematch(ws) {
+  /** 请求再来一局（再战模式，携带目标关卡） */
+  requestRematch(ws, stage) {
     const roomId = this.socketToRoom.get(ws);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (!room || !room.guest) return;
 
+    if (typeof stage === 'number') {
+      room.stage = stage;
+    }
+
     // 重置状态进入就绪
     room.status = 'READY';
     room.winner = null;
-    room.broadcast('REMATCH_READY', {});
+    room.broadcast('REMATCH_READY', { stage: room.stage });
   }
 
   /** 消息转发（手绘肢体变更与高频位置同步） */

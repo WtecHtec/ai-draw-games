@@ -69,4 +69,63 @@ describe('PvPService 状态与交互流转', () => {
     expect(sendStageReadySpy).toHaveBeenCalledWith(1); // stage 0 -> next stage 1
     expect(onReturnToMenu).not.toHaveBeenCalled();
   });
+
+  test('房主先点击再战/下一关，随后收到对手就绪时，正确携带目标关卡号发起开赛', () => {
+    netClient.role = 'host';
+    const startRaceSpy = jest.spyOn(netClient, 'startRace').mockImplementation(() => {});
+
+    // 房主在第 0 关结束后点击下一关/再战
+    pvpService.handleMainButtonClick({
+      currentStage: 0,
+      result: 'WIN',
+      onReturnToMenu: jest.fn(),
+      onNextStageStarted: jest.fn(),
+    });
+
+    expect(pvpService.selfReadyNext).toBe(true);
+    expect(pvpService.pendingNextStage).toBe(1);
+    expect(startRaceSpy).not.toHaveBeenCalled(); // 还在等对手
+
+    // 对手发来 OPPONENT_STAGE_READY
+    netClient.emit('OPPONENT_STAGE_READY', { stage: 1 });
+
+    expect(startRaceSpy).toHaveBeenCalledWith(1); // 成功携带 stage 1 开赛！
+  });
+
+  test('对手先准备，房主点击再战一局，直接携带目标关卡号开赛', () => {
+    netClient.role = 'host';
+    const startRaceSpy = jest.spyOn(netClient, 'startRace').mockImplementation(() => {});
+
+    // 对手先准备
+    netClient.emit('OPPONENT_STAGE_READY', { stage: 2 });
+    expect(pvpService.opponentReadyNext).toBe(true);
+    expect(startRaceSpy).not.toHaveBeenCalled();
+
+    // 房主点击再战一局 (当前第 1 关，结果 LOSE)
+    pvpService.handleMainButtonClick({
+      currentStage: 1,
+      result: 'LOSE',
+      onReturnToMenu: jest.fn(),
+      onNextStageStarted: jest.fn(),
+    });
+
+    expect(startRaceSpy).toHaveBeenCalledWith(2);
+  });
+
+  test('挑战者点击再战一局，调用 requestRematch 并携带下一关关卡号', () => {
+    netClient.role = 'guest';
+    const rematchSpy = jest.spyOn(netClient, 'requestRematch').mockImplementation(() => {});
+    const sendStageReadySpy = jest.spyOn(netClient, 'sendStageReady').mockImplementation(() => {});
+
+    pvpService.handleMainButtonClick({
+      currentStage: 2,
+      result: 'LOSE',
+      onReturnToMenu: jest.fn(),
+      onNextStageStarted: jest.fn(),
+    });
+
+    expect(pvpService.selfReadyNext).toBe(true);
+    expect(sendStageReadySpy).toHaveBeenCalledWith(3);
+    expect(rematchSpy).toHaveBeenCalledWith(3);
+  });
 });
