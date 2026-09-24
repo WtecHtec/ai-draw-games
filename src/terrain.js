@@ -27,19 +27,19 @@ export const POOL = [
   { type: 'stairs',   n: 4, h: STEP_H, gap: 120,            label: '阶梯',    block: 'long' },
   { type: 'bumps',    len: 800, amp: 12, period: 38,         label: '颠簸路' },
   { type: 'pits',     n: 3, w: 80, d: 35, gap: 130,         label: '小坑',    block: 'long' },
-  { type: 'bigpit',   w: 140, d: 70,                         label: '大坑',    block: 'long' },
+  { type: 'bigpit',   w: 140, d: 55,                         label: '大坑',    block: 'long' },
   { type: 'wave',     len: 900, dh: 110,                     label: '大波浪' },
   { type: 'sawtooth', n: 5, len: 110, h: 50,                 label: '锯齿坡' },
   { type: 'tunnel',   len: 500,                              label: '隧道',    block: 'small' },
   { type: 'hurdles',  n: 4, h: 28, w: 14, gap: 110,          label: '跨栏',    block: 'long' },
-  { type: 'cliff',    dh: 140,                               label: '跳崖' },
-  { type: 'steep',    len: 300, dh: -130,                    label: '急坡' },
-  { type: 'water',    len: 960, d: 150,                      label: '水池',    block: 'long' },
-  { type: 'wall',     h: 95,                                 label: '高墙',    block: 'climb' },
-  { type: 'climb',    h: 85, tunnel: 320,                    label: '天花板+墙', block: 'climb' },
+  { type: 'cliff',    dh: 85,                                label: '跳崖' },
+  { type: 'steep',    len: 320, dh: 65,                      label: '急坡' },
+  { type: 'water',    len: 960, d: 75,                       label: '水池',    block: 'long' },
+  { type: 'wall',     h: 75,                                 label: '高墙',    block: 'climb' },
+  { type: 'climb',    h: 70, tunnel: 320,                    label: '天花板+墙', block: 'climb' },
   { type: 'belt',     len: 600, speed: -200,                 label: '逆向传送带', block: 'long' },
-  { type: 'ice',      len: 750, dh: -160, mu: 0.28,          label: '冰坡' },
-  { type: 'mud',      len: 560, d: 65,                       label: '泥沼',    block: 'long' },
+  { type: 'ice',      len: 620, dh: 70, mu: 0.28,            label: '冰坡' },
+  { type: 'mud',      len: 560, d: 50,                       label: '泥沼',    block: 'long' },
 ];
 
 /**
@@ -156,12 +156,13 @@ export function buildCourse(stage, options = {}) {
     const from = x;
 
     if (c.type === 'flat') {
-      // 平地：若高度偏离基准面 300，平滑过渡回 300，防止连续坡度累积导致赛道漂移出画面
+      // 平地：若高度偏离基准面 300，平缓过渡回 300（保证坡度不超过 18 度，杜绝极端垂直陡坡），防止连续坡度累积漂移
       const targetY = 300;
       if (Math.abs(y - targetY) > 8) {
         const yStart = y;
         const diff = targetY - yStart;
-        push(c.len, t => yStart + diff * (1 - Math.cos(Math.PI * t / c.len)) / 2);
+        const safeLen = Math.max(c.len, Math.abs(diff) * 3);
+        push(safeLen, t => yStart + diff * (1 - Math.cos(Math.PI * t / safeLen)) / 2);
         y = targetY;
       } else {
         push(c.len, () => y);
@@ -209,19 +210,52 @@ export function buildCourse(stage, options = {}) {
       }
 
     } else if (c.type === 'steep') {
-      // 急坡：线性下坡（随机坡长与落差）
+      // 急坡：带防滑助推锯齿的陡坡翻越（上坡 + 顶峰 + 顺畅下坡，完全回归基准面）
       const y0 = y;
-      const L = Math.round(c.len * (0.9 + rnd() * 0.25));
-      const dh = c.dh * (0.85 + rnd() * 0.3);
-      push(L, t => y0 + dh * t / L);
-      y += dh;
+      const sH = Math.round((c.dh || 65) * (0.85 + rnd() * 0.25));
+      const halfLen = 140;
+      // 上坡段：3 段锯齿助推爬升
+      const nTeeth = 3;
+      const tLen = Math.round(halfLen / nTeeth);
+      const tDh = sH / nTeeth;
+      for (let k = 0; k < nTeeth; k++) {
+        const curY = y;
+        push(tLen - 8, t => curY - (tDh + 3) * (t / (tLen - 8)));
+        push(8, t => (curY - (tDh + 3)) + 3 * (t / 8));
+        y -= tDh;
+      }
+      // 峰顶
+      push(40, () => y0 - sH);
+      // 顺畅下坡段
+      push(halfLen, t => (y0 - sH) + sH * (t / halfLen));
+      y = y0;
 
     } else if (c.type === 'cliff') {
-      // 跳崖：突然下降一个高度差（随机高度落差）
-      const dh = c.dh * (0.85 + rnd() * 0.3);
-      push(40, () => y);
-      y += dh;
-      push(40, () => y);
+      // 跳崖：悬崖跳跃下落 + 谷底缓冲起跑区 + 4级防滑攀爬锯齿坡（彻底解决中级/高级/大师地图谷底无法跨越的问题）
+      const y0 = y;
+      const dh = Math.round((c.dh || 85) * (0.85 + rnd() * 0.2)); // 优化落差 ~75-95px，兼顾视觉刺激与通行可能
+      // 1. 悬崖起跳平台
+      push(60, () => y0);
+      // 2. 悬崖陡降至谷底
+      push(30, t => y0 + dh * (t / 30));
+      y = y0 + dh;
+      // 3. 谷底平稳着陆区（100px），提供缓冲和加速距离
+      push(100, () => y);
+      // 4. 带防滑咬合锯齿的攀爬坡（4级锯齿台阶助推翻越）
+      const numTeeth = 4;
+      const stepLen = 55;
+      const stepDh = dh / numTeeth;
+      for (let k = 0; k < numTeeth; k++) {
+        const toothYStart = y;
+        // 爬坡斜面
+        push(stepLen - 10, t => toothYStart - (stepDh + 4) * (t / (stepLen - 10)));
+        // 锯齿咬合落差卡口（4px），轮子和肢体可卡住受力向上借力！
+        push(10, t => (toothYStart - (stepDh + 4)) + 4 * (t / 10));
+        y = toothYStart - stepDh;
+      }
+      y = y0; // 爬出谷底平稳回归基准高度
+      // 5. 顶端缓冲过渡平台
+      push(50, () => y0);
 
     } else if (c.type === 'stairs') {
       // 阶梯：多级台阶，之后缓坡恢复原高度（随机阶数与台阶宽度）
@@ -249,13 +283,28 @@ export function buildCourse(stage, options = {}) {
       push(pgap, () => y0);
 
     } else if (c.type === 'bigpit') {
-      // 大坑：单个宽深沟槽（随机坑宽与深度）
+      // 大坑：深沟槽 + 3级防滑爬坑锯齿阶梯（掉入后可借助阶梯齿口攀爬出坑，不再锁死）
       const y0 = y;
-      const pw = Math.round(c.w * (0.85 + rnd() * 0.3));
-      const pd = Math.round(c.d * (0.85 + rnd() * 0.3));
-      push(80,   () => y0);
-      push(pw,  () => y0 + pd);
-      push(80,   () => y0);
+      const pw = Math.round(c.w * (0.85 + rnd() * 0.25));
+      const pd = Math.round((c.d || 55) * (0.85 + rnd() * 0.25));
+      push(60, () => y0);
+      // 陡降入坑
+      push(25, t => y0 + pd * (t / 25));
+      // 坑底
+      push(pw, () => y0 + pd);
+      // 出坑防滑锯齿坡（3阶锯齿助推爬出）
+      const pitTeeth = 3;
+      const toothL = 45;
+      const toothH = pd / pitTeeth;
+      let currPitY = y0 + pd;
+      for (let k = 0; k < pitTeeth; k++) {
+        const startY = currPitY;
+        push(toothL - 8, t => startY - (toothH + 3) * (t / (toothL - 8)));
+        push(8, t => (startY - (toothH + 3)) + 3 * (t / 8));
+        currPitY -= toothH;
+      }
+      y = y0;
+      push(60, () => y0);
 
     } else if (c.type === 'tunnel') {
       // 隧道：有天花板的平地区段（随机隧道长度）
@@ -277,28 +326,36 @@ export function buildCourse(stage, options = {}) {
       push(hgap, () => y0);
 
     } else if (c.type === 'wall') {
-      // 高墙：需要攀爬的陡峭台阶（随机墙高）
-      const wh = Math.round(c.h * (0.9 + rnd() * 0.2));
+      // 高墙：高耸台阶面加入阶梯卡位，避免 90 度垂直法向卡死，下坡平缓安全
+      const wh = Math.round((c.h || 75) * (0.9 + rnd() * 0.2));
       push(60, () => y);
+      // 攀爬正面分成 3 级紧凑小阶梯，方便肢体和车轮抓取借力翻越
+      push(15, () => y - wh * 0.35);
+      push(15, () => y - wh * 0.7);
+      push(15, () => y - wh);
       y -= wh;
-      push(160, () => y);
+      push(140, () => y);
       const y1 = y;
-      push(300, t => y1 + wh * t / 300);
+      push(260, t => y1 + wh * t / 260);
       y += wh;
 
     } else if (c.type === 'climb') {
-      // 天花板+墙：低隧道后紧接高墙（随机隧道长与墙高）
+      // 天花板+墙：低隧道后紧接高墙（高墙面加入攀爬阶梯）
       const y0 = y;
-      const ch = Math.round(c.h * (0.9 + rnd() * 0.2));
+      const ch = Math.round((c.h || 70) * (0.9 + rnd() * 0.2));
       const cTunnel = Math.round(c.tunnel * (0.9 + rnd() * 0.25));
       push(60, () => y0);
       push(cTunnel, () => y0, () => y0 - TUNNEL_H);
-      push(180, () => y0);
+      push(160, () => y0);
       c.wallX = x; // 记录墙壁起始 X，供 CPU 计划使用
-      y -= ch;
-      push(160, () => y);
+      // 攀爬高墙面加入 3 级紧凑小阶梯
+      push(15, () => y0 - ch * 0.35);
+      push(15, () => y0 - ch * 0.7);
+      push(15, () => y0 - ch);
+      y = y0 - ch;
+      push(140, () => y);
       const y1 = y;
-      push(300, t => y1 + ch * t / 300);
+      push(260, t => y1 + ch * t / 260);
       y += ch;
 
     } else if (c.type === 'belt') {
@@ -312,15 +369,21 @@ export function buildCourse(stage, options = {}) {
       surf = null;
 
     } else if (c.type === 'ice') {
-      // 冰坡：低摩擦上坡（随机摩擦系数与坡度）
+      // 冰坡：低摩擦上坡 + 顶峰滑行 + 顺畅下坡回落（恢复原基准高度，不留断崖）
       const y0 = y;
-      const L = Math.round(c.len * (0.9 + rnd() * 0.25));
-      const dh = c.dh * (0.85 + rnd() * 0.3);
-      const mu = Number((0.2 + rnd() * 0.15).toFixed(2));
+      const dh = Math.round((c.dh || 70) * (0.85 + rnd() * 0.25));
+      const upLen = 280;
+      const downLen = 280;
+      const mu = Number((0.24 + rnd() * 0.1).toFixed(2));
       surf = { mu };
-      push(L, t => y0 + dh * t / L);
+      // 冰面爬坡
+      push(upLen, t => y0 - dh * (t / upLen));
+      // 冰顶平地
+      push(60, () => y0 - dh);
+      // 冰面下坡
+      push(downLen, t => (y0 - dh) + dh * (t / downLen));
       surf = null;
-      y += dh;
+      y = y0;
 
     } else if (c.type === 'mud') {
       // 泥沼：向下沉（随机泥沼长度与深度）
@@ -334,13 +397,27 @@ export function buildCourse(stage, options = {}) {
       surf = null;
 
     } else if (c.type === 'water') {
-      // 水池：深水区（随机水深与水域长度）
+      // 水池：优化适度水深 + 出水爬坡防滑阶梯（防止深水下陷无法脱困）
       const y0 = y;
       const wLen = Math.round(c.len * (0.9 + rnd() * 0.25));
-      const d = Math.round(c.d * (0.85 + rnd() * 0.3));
-      push(60,          t => y0 + d * t / 60,          null, y0);
-      push(wLen - 360,  () => y0 + d,                  null, y0);
-      push(300,         t => y0 + d * (1 - t / 300),   null, y0);
+      const d = Math.round((c.d || 75) * (0.85 + rnd() * 0.25));
+      // 入水坡
+      push(90, t => y0 + d * t / 90, null, y0);
+      // 水底巡航段
+      push(wLen - 390, () => y0 + d, null, y0);
+      // 出水爬坡段（300px 带 3 级水底锯齿突起，防止轮子在水下拉不上去）
+      const outLen = 300;
+      const teethCount = 3;
+      const toothSeg = Math.round(outLen / teethCount);
+      const toothStep = d / teethCount;
+      let wy = y0 + d;
+      for (let k = 0; k < teethCount; k++) {
+        const segStart = wy;
+        push(toothSeg - 10, t => segStart - (toothStep + 3) * (t / (toothSeg - 10)), null, y0);
+        push(10, t => (segStart - (toothStep + 3)) + 3 * (t / 10), null, y0);
+        wy -= toothStep;
+      }
+      y = y0;
     }
 
     // 记录区段信息（用于 HUD 显示、渲染器材质绘制和 CPU 计划）

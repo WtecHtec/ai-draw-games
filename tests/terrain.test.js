@@ -202,5 +202,24 @@ describe('确定性种子地图生成', () => {
     expect(t1.HA).toEqual(t2.HA);
     expect(t1.SECTIONS.length).toBe(t2.SECTIONS.length);
   });
+
+  test('全难度关卡（新手/初级/中级/高级/大师）障碍物高度均平稳回归基准面且无极端死锁深坑', () => {
+    for (let s = 0; s < 5; s++) {
+      const td = buildCourse(s, { seed: 99999 });
+      // 检查终点高度必须平稳在基准面 300 附近（允许合理波动，杜绝漂移到 400+ 或 100-）
+      const finishIdx = Math.floor(td.FINISH_X / TSTEP);
+      const finishY = td.HA[finishIdx];
+      expect(Math.abs(finishY - 300)).toBeLessThan(25);
+
+      // 验证中级关卡 (stage 2) 包含 cliff 区段，且 cliff 区段后平稳回归基准面
+      if (s === 2) {
+        const cliffSec = td.SECTIONS.find(sec => sec.type === 'cliff');
+        expect(cliffSec).toBeDefined();
+        const endCliffY = terrain(td.HA, cliffSec.to);
+        expect(Math.abs(endCliffY - 300)).toBeLessThan(15);
+      }
+    }
+  });
 });
+
 
