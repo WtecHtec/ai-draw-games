@@ -1147,8 +1147,12 @@
       pad.title = '拖拽绘制手脚，长按生成正圆';
     }
 
-    // ─── 提示文字：首次触碰画板后隐藏 ─────────────────────────
-    pad.addEventListener('pointerdown', () => hint?.classList.add('hidden'), { once: true });
+    // ─── 提示文字：触碰画板瞬间立即彻底移除 ─────────────────────────
+    pad.addEventListener('pointerdown', () => {
+      hint?.classList.add('hidden');
+      hint?.remove();
+      document.getElementById('hint')?.remove();
+    });
 
     // ─── 等待 drawpad 实例后安全绑定按钮 ────────────────────────
     function bindButtons() {

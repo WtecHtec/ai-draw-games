@@ -105,6 +105,11 @@ aiController.init({
 
 // ─── 画板初始化 ────────────────────────────────────────────────
 const drawpad = new Drawpad(padCanvas, limbs => {
+  const hasLimbs = limbs && (limbs.arm.length > 0 || limbs.leg.length > 0);
+  if (hasLimbs) {
+    hideStageHint();
+  }
+
   const tf = makeTerrainFns(terrainData);
   const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim() || '#1a1a1a';
   if (!player) {
@@ -120,7 +125,8 @@ const drawpad = new Drawpad(padCanvas, limbs => {
     netClient.sendLimbs(limbs);
   }
 
-  if (!racing && !result && cpuMode !== 'pvp') {
+  // 只有真正绘制了手脚肢体后才自动出发，清空画板时不误触发开赛
+  if (!racing && !result && cpuMode !== 'pvp' && hasLimbs) {
     startRace();
   }
 });
@@ -155,14 +161,14 @@ pvpService.onRaceStart = ({ stage: newStage, seed, countdownMs }) => {
   cpuMode = 'pvp';
   if (typeof newStage === 'number') stage = newStage;
 
+  // 每次进入新对局/关卡：彻底清空手脚，强制玩家为新关卡重新绘制！
+  drawpad.applyClear();
+  pvpService.opponentLimbs = { arm: [], leg: [] };
+
   window.__hideStartOverlay?.();
-  document.getElementById('hint')?.remove();
+  hideStageHint();
 
   triggerPvPCountdown(seed, countdownMs || 3000);
-
-  if (drawpad && drawpad.limbs && (drawpad.limbs.arm.length > 0 || drawpad.limbs.leg.length > 0)) {
-    netClient.sendLimbs(drawpad.limbs);
-  }
 };
 
 pvpService.onMatchFinish = ({ winner }) => {
@@ -198,6 +204,77 @@ pvpService.onRenderNeeded = () => {
   renderFrame();
 };
 
+// ─── 关卡与绘制指引控制 ──────────────────────────────────────────
+
+let stageHintTimer = null;
+
+/** 隐藏绘制指引浮层并彻底移除 DOM */
+function hideStageHint() {
+  if (stageHintTimer) {
+    clearTimeout(stageHintTimer);
+    stageHintTimer = null;
+  }
+  const hintEl = document.getElementById('hint');
+  if (hintEl) {
+    hintEl.classList.add('hidden');
+    hintEl.style.opacity = '0';
+    hintEl.remove();
+  }
+}
+
+/** 显示关卡手脚绘制指引，1.5 秒后自动及时淡出移除，绝不遮挡画面 */
+function showStageHint(text, autoDismissMs = 1500) {
+  hideStageHint();
+  const hintEl = document.createElement('div');
+  hintEl.id = 'hint';
+  hintEl.innerHTML = `<p id="hint-desc">${text}</p>`;
+  document.body.appendChild(hintEl);
+
+  stageHintTimer = setTimeout(() => {
+    hideStageHint();
+  }, autoDismissMs);
+}
+
+// 玩家手指或鼠标触碰画板瞬间，立即消除任何提示文案
+padCanvas.addEventListener('pointerdown', () => {
+  hideStageHint();
+});
+
+/** 进入新关卡：清空上一关手脚，要求重新手绘，静态待机 */
+function prepareNewStage() {
+  hideStageHint();
+  racing = false;
+  result = '';
+  raceTime = 0;
+  lastTs = 0;
+  acc = 0;
+  cpuDone = false;
+
+  // 清空画板并清空玩家手脚，强制玩家为新关卡重新绘制！
+  drawpad.applyClear();
+
+  terrainData = buildCourse(stage);
+  const tf = makeTerrainFns(terrainData);
+
+  const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim() || '#1a1a1a';
+  const cpuColor    = getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim() || '#e11d48';
+
+  player = makeBody(drawpad.limbs, playerColor);
+  cpu = makeBody(CPU_ROUND, cpuColor);
+  cpu.poseName = 'round';
+  cpu.speed = (cpuMode === 'jev' || cpuMode === 'qwen') ? 1.0 : CPU_SPEED;
+  aiController.reset();
+
+  placeAtStart(player, START_X, tf.getTerrainH);
+  placeAtStart(cpu, START_X, tf.getTerrainH);
+
+  cancelAnimationFrame(raf);
+  renderFrame();
+
+  const stageName = STAGE_NAMES[stage] ?? `第${stage + 1}关`;
+  showStageHint(`🏁 进入【${stageName}】！请重新绘制手脚 ✍️`, 1500);
+}
+
 // ─── 比赛控制 ──────────────────────────────────────────────────
 
 /** 触发 PvP 全屏 3-2-1 起跑倒计时 */
@@ -232,6 +309,7 @@ function triggerPvPCountdown(seed, countdownMs = 3000) {
 
 /** 开始（或重新开始）一场比赛 */
 function startRace(options = {}) {
+  hideStageHint();
   if (options.seed !== undefined) {
     pvpService.seed = options.seed;
   }
@@ -429,8 +507,10 @@ raceCanvas.addEventListener('click', e => {
     } else {
       if (result === 'WIN') {
         stage = (stage + 1) % STAGES.length;
+        prepareNewStage();
+      } else {
+        startRace();
       }
-      startRace();
     }
   }
 });
