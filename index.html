@@ -5,31 +5,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- 移动端主题色（浏览器状态栏颜色） -->
-  <meta name="theme-color" content="#3b4dbf">
+  <meta name="theme-color" content="#faf8f5">
   <!-- iOS 全屏 Web App 支持 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>绘制滚轮赛跑</title>
-  <meta name="description" content="在画板上画出手脚，驱动角色参加物理竞速比赛！">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>简笔画滚轮赛跑</title>
+  <meta name="description" content="在画板上画出手脚，驱动角色参加极简线条手绘物理竞速比赛！">
   <style>
-    /* ─── CSS 主题变量 ───────────────────────────────── */
+    /* ─── CSS 主题变量（极简手绘线条 / 素描草稿纸风，纯黑纯墨水） ───────── */
     :root {
-      --ink: #23262b;
-      /* 描边 / 文字颜色 */
-      --player: #e0413a;
-      /* 玩家颜色（红） */
-      --cpu: #3b6ec7;
-      /* CPU 颜色（蓝） */
-      --ground: #2b2f36;
-      /* 地面颜色 */
-      --bg: #7d8fe8;
-      /* 背景色 */
+      --ink: #1a1a1a;
+      /* 纯黑手绘墨水描边 */
+      --player: #1a1a1a;
+      /* 玩家手绘黑色钢笔笔触（纯简笔画） */
+      --cpu: #dc2626;
+      /* CPU 手绘红色铅笔笔触 */
+      --ground: #f4f1ea;
+      /* 地面素描纸底色 */
+      --bg: #faf8f5;
+      /* 温暖素描草稿纸背景 */
+      --grid: rgba(0, 0, 0, 0.045);
+      /* 草稿纸方格浅线条 */
       --panel: #ffffff;
-      /* 画板背景 */
-      --tool-bg: #f0f2f8;
-      /* 工具栏背景 */
-      --tool-active: #e0413a;
-      /* 选中工具颜色 */
+      /* 画板便签纸纯白 */
+      --tool-bg: #ffffff;
+      /* 工具栏按键白底 */
+      --tool-active: #1a1a1a;
+      /* 激活手绘纯黑 */
     }
 
     *,
@@ -44,7 +46,11 @@
       margin: 0;
       overflow: hidden;
       background: var(--bg);
-      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
+      background-image: 
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 28px 28px;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Segoe UI", Roboto, sans-serif;
     }
 
     /* ─── 比赛主画布（全屏） ─── */
@@ -61,38 +67,40 @@
     #controls {
       position: fixed;
       left: 50%;
-      bottom: max(4vh, env(safe-area-inset-bottom));
+      bottom: max(3.5vh, env(safe-area-inset-bottom));
       transform: translateX(-50%);
       width: min(88vw, 480px);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
       align-items: center;
+      z-index: 20;
     }
 
-    /* ─── 工具栏 ─── */
+    /* ─── 工具栏（手绘线条卡片风） ─── */
     #toolbar {
       display: flex;
       gap: 8px;
       align-items: center;
-      background: rgba(255, 255, 255, 0.92);
+      background: #ffffff;
+      border: 2px solid var(--ink);
       border-radius: 14px;
       padding: 6px 12px;
-      box-shadow: 0 4px 16px rgba(40, 50, 120, .2);
+      box-shadow: 3px 3px 0 var(--ink);
     }
 
-    /* AI 模式标记（裁剪溢出，防止长文本撑大工具栏） */
+    /* AI 模式标记 */
     #ai-badge {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
-      color: #fff;
-      background: linear-gradient(135deg, #e551ba, #7c3aed);
+      color: #1a1a1a;
+      background: #f0ede4;
+      border: 1.5px solid var(--ink);
       border-radius: 8px;
-      padding: 2px 8px;
-      letter-spacing: 0.03em;
+      padding: 3px 8px;
+      letter-spacing: 0.02em;
       white-space: nowrap;
-      opacity: 0.9;
-      max-width: 90px;
+      max-width: 110px;
       overflow: hidden;
       text-overflow: ellipsis;
       display: inline-block;
@@ -100,59 +108,69 @@
       text-align: center;
     }
 
-
     .tool-btn {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 2px;
       padding: 6px 12px;
-      border: 2px solid transparent;
+      border: 1.5px solid var(--ink);
       border-radius: 10px;
       background: var(--tool-bg);
       cursor: pointer;
-      font-size: 18px;
+      font-size: 17px;
       line-height: 1;
-      transition: all 0.15s ease;
+      transition: all 0.12s ease;
       user-select: none;
       -webkit-user-select: none;
+      box-shadow: 2px 2px 0 var(--ink);
     }
 
     .tool-btn span {
       font-size: 10px;
-      color: #666;
-      font-weight: 600;
+      color: #1a1a1a;
+      font-weight: 700;
     }
 
     .tool-btn:hover {
-      background: #e8ecff;
-      border-color: rgba(59, 110, 199, 0.3);
-      transform: translateY(-1px);
+      background: #f5f2eb;
+      transform: translate(-1px, -1px);
+      box-shadow: 3px 3px 0 var(--ink);
     }
 
     .tool-btn:active {
-      transform: translateY(0);
-      opacity: 0.8;
+      transform: translate(1px, 1px);
+      box-shadow: 1px 1px 0 var(--ink);
     }
 
-    /* ─── 绘制画板 ─── */
+    .tool-btn.active {
+      background: #1a1a1a;
+      color: #ffffff;
+    }
+
+    .tool-btn.active span {
+      color: #ffffff;
+    }
+
+    /* ─── 绘制画板（素描便签纸风） ─── */
     #pad {
       display: block;
       width: 100%;
       aspect-ratio: 5 / 3;
       background: var(--panel);
-      border: 3px dashed #c5c9d2;
-      border-radius: 18px;
-      box-shadow: 0 10px 30px rgba(40, 50, 120, .25);
+      border: 2.5px solid var(--ink);
+      border-radius: 16px;
+      box-shadow: 4px 4px 0 var(--ink);
       touch-action: none;
       cursor: crosshair;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
 
     /* 画板激活状态 */
     #pad:active,
     #pad.drawing {
       border-color: var(--player);
-      box-shadow: 0 10px 30px rgba(224, 65, 58, .3);
+      box-shadow: 4px 4px 0 var(--player);
     }
 
     /* ─── 左上方 WebLLM 决策提示框 ─── */
@@ -236,7 +254,7 @@
       line-height: 1.6;
     }
 
-    /* ─── 开始引导覆盖层 ─── */
+    /* ─── 开始引导覆盖层（素描手绘便签卡片） ─── */
     #start-overlay {
       position: fixed;
       inset: 0;
@@ -244,11 +262,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      /* 游戏背景需要渲染，覆盖层用半透明模糊 */
-      background: rgba(10, 12, 28, 0.72);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      transition: opacity 0.4s ease;
+      background: rgba(250, 248, 245, 0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      transition: opacity 0.3s ease;
     }
 
     #start-overlay.fade-out {
@@ -256,36 +273,37 @@
       pointer-events: none;
     }
 
-    /* 引导卡片主体 */
+    /* 引导卡片主体（手绘线条便签纸） */
     #start-panel {
       width: min(94vw, 500px);
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 24px;
-      padding: 36px 24px 28px;
-      color: #fff;
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 20px;
+      padding: 32px 24px 26px;
+      color: #1a1a1a;
       text-align: center;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+      box-shadow: 6px 6px 0 var(--ink);
     }
 
     #start-panel h1 {
       margin: 0 0 6px;
-      font-size: clamp(22px, 5vw, 30px);
-      font-weight: 800;
+      font-size: clamp(22px, 5vw, 28px);
+      font-weight: 900;
       letter-spacing: -0.02em;
+      color: #1a1a1a;
     }
 
     #start-panel .subtitle {
-      margin: 0 0 24px;
+      margin: 0 0 22px;
       font-size: 13px;
-      opacity: 0.65;
+      color: #666;
     }
 
     /* 模式选择卡片布局 */
     .mode-cards {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
+      gap: 10px;
       margin-bottom: 20px;
     }
 
@@ -296,42 +314,36 @@
     }
 
     .mode-card {
-      background: rgba(255, 255, 255, 0.07);
-      border: 1.5px solid rgba(255, 255, 255, 0.15);
-      border-radius: 16px;
+      background: #faf8f5;
+      border: 1.5px solid #d1cbbe;
+      border-radius: 14px;
       padding: 12px 6px;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
       text-align: center;
+      box-shadow: 2px 2px 0 #d1cbbe;
     }
 
     .mode-card:hover {
-      background: rgba(255, 255, 255, 0.13);
+      background: #f4efe6;
+      border-color: var(--ink);
       transform: translateY(-2px);
+      box-shadow: 3px 3px 0 var(--ink);
     }
 
     .mode-card.selected {
-      border-color: rgba(229, 81, 186, 0.9);
-      background: rgba(229, 81, 186, 0.12);
-      box-shadow: 0 0 18px rgba(229, 81, 186, 0.3);
+      border: 2px solid var(--ink);
+      background: #ffffff;
+      box-shadow: 4px 4px 0 var(--ink);
+      transform: translateY(-2px);
     }
 
-    .mode-card.selected.jev-card {
-      border-color: rgba(124, 58, 237, 0.9);
-      background: rgba(124, 58, 237, 0.12);
-      box-shadow: 0 0 18px rgba(124, 58, 237, 0.35);
-    }
-
-    .mode-card.selected.qwen-card {
-      border-color: rgba(16, 185, 129, 0.9);
-      background: rgba(16, 185, 129, 0.12);
-      box-shadow: 0 0 18px rgba(16, 185, 129, 0.35);
-    }
-
+    .mode-card.selected.jev-card,
+    .mode-card.selected.qwen-card,
     .mode-card.selected.pvp-card {
-      border-color: rgba(56, 189, 248, 0.9);
-      background: rgba(56, 189, 248, 0.15);
-      box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+      border-color: var(--ink);
+      background: #ffffff;
+      box-shadow: 4px 4px 0 var(--ink);
     }
 
     .mode-card .card-icon {
@@ -343,17 +355,18 @@
     .mode-card h3 {
       margin: 0 0 4px;
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 800;
+      color: #1a1a1a;
     }
 
     .mode-card p {
       margin: 0;
       font-size: 10px;
-      opacity: 0.65;
+      color: #666;
       line-height: 1.35;
     }
 
-    /* API Key 配置区 */
+    /* API Key 配置区（极简手绘白底墨水线框） */
     #api-key-section {
       margin-bottom: 16px;
       overflow: hidden;
@@ -374,21 +387,22 @@
       width: 100%;
       box-sizing: border-box;
       padding: 10px 14px;
-      border: 1.5px solid rgba(124, 58, 237, 0.5);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
+      border: 2px solid var(--ink);
+      border-radius: 10px;
+      background: #ffffff;
+      color: #1a1a1a;
       font-size: 13px;
       outline: none;
-      transition: border-color 0.2s;
+      box-shadow: 2px 2px 0 var(--ink);
     }
 
     #api-key-input::placeholder {
-      color: rgba(255, 255, 255, 0.35);
+      color: #888;
     }
 
     #api-key-input:focus {
-      border-color: rgba(124, 58, 237, 0.9);
+      border-color: var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
     }
 
     /* Qwen WebLLM 状态与进度条 */
@@ -411,7 +425,7 @@
 
     .qwen-status-text {
       font-size: 11px;
-      color: rgba(255, 255, 255, 0.75);
+      color: #555;
       line-height: 1.4;
       display: flex;
       justify-content: space-between;
@@ -420,20 +434,21 @@
     .qwen-progress-bar {
       width: 100%;
       height: 6px;
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 3px;
+      background: #e5e2da;
+      border: 1px solid var(--ink);
+      border-radius: 4px;
       overflow: hidden;
     }
 
     .qwen-progress-inner {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #10b981, #06b6d4);
+      background: var(--ink);
       border-radius: 3px;
       transition: width 0.15s ease;
     }
 
-    /* PvP 房间面板 */
+    /* PvP 房间面板（极简草稿纸线框） */
     #pvp-section {
       margin-bottom: 16px;
       overflow: hidden;
@@ -461,71 +476,74 @@
       flex: 1;
       box-sizing: border-box;
       padding: 9px 12px;
-      border: 1.5px solid rgba(56, 189, 248, 0.5);
+      border: 2px solid var(--ink);
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
+      background: #ffffff;
+      color: #1a1a1a;
       font-size: 13px;
       outline: none;
-      transition: border-color 0.2s;
+      box-shadow: 2px 2px 0 var(--ink);
     }
 
     .pvp-input:focus {
-      border-color: rgba(56, 189, 248, 0.9);
+      border-color: var(--ink);
     }
 
     .pvp-btn-sm {
       padding: 9px 14px;
-      border: none;
+      border: 2px solid var(--ink);
       border-radius: 10px;
-      background: linear-gradient(135deg, #0284c7, #2563eb);
-      color: #fff;
+      background: var(--ink);
+      color: #ffffff;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
-      transition: opacity 0.2s, transform 0.15s;
+      box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.25);
+      transition: transform 0.12s;
     }
 
     .pvp-btn-sm:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
+      transform: translate(-1px, -1px);
+      box-shadow: 3px 3px 0 var(--ink);
     }
 
     .pvp-btn-danger {
-      background: rgba(239, 68, 68, 0.25);
-      border: 1px solid rgba(239, 68, 68, 0.5);
-      color: #fca5a5;
+      background: #ffffff;
+      border: 2px solid var(--cpu);
+      color: var(--cpu);
+      box-shadow: 2px 2px 0 var(--cpu);
     }
 
     .pvp-btn-danger:hover {
-      background: rgba(239, 68, 68, 0.4);
+      background: #fef2f2;
     }
 
     .pvp-status-box {
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(56, 189, 248, 0.3);
+      background: #faf8f5;
+      border: 2px solid var(--ink);
       border-radius: 12px;
       padding: 10px 14px;
       font-size: 12px;
       display: flex;
       flex-direction: column;
       gap: 6px;
+      box-shadow: 2px 2px 0 var(--ink);
     }
 
     .pvp-room-code-badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-weight: 700;
+      font-weight: 800;
       font-size: 14px;
-      color: #38bdf8;
+      color: #1a1a1a;
     }
 
     .pvp-player-list {
       display: flex;
       justify-content: space-between;
-      color: rgba(255, 255, 255, 0.85);
+      color: #333;
       font-size: 12px;
     }
 
@@ -536,27 +554,26 @@
     }
 
     .pvp-dot {
-      width: 7px;
-      height: 7px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
+      border: 1px solid var(--ink);
     }
 
     .pvp-dot.host {
-      background: #38bdf8;
-      box-shadow: 0 0 6px #38bdf8;
+      background: var(--ink);
     }
 
     .pvp-dot.guest {
-      background: #f97316;
-      box-shadow: 0 0 6px #f97316;
+      background: var(--cpu);
     }
 
     .pvp-dot.waiting {
-      background: #94a3b8;
+      background: #d1cbbe;
       animation: qwenPulse 1.5s infinite;
     }
 
-    /* PvP 开赛 3-2-1 全屏倒计时 */
+    /* PvP 开赛 3-2-1 全屏倒计时（手绘素描便签风） */
     #pvp-countdown {
       position: fixed;
       inset: 0;
@@ -565,9 +582,9 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: rgba(10, 15, 30, 0.65);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: rgba(250, 248, 245, 0.92);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       pointer-events: none;
       transition: opacity 0.3s ease;
     }
@@ -580,8 +597,8 @@
     .countdown-num {
       font-size: clamp(64px, 18vw, 130px);
       font-weight: 900;
-      color: #facc15;
-      text-shadow: 0 0 30px rgba(250, 204, 21, 0.8), 0 4px 20px rgba(0,0,0,0.6);
+      color: var(--ink);
+      text-shadow: 4px 4px 0 rgba(0, 0, 0, 0.15);
       transform: scale(1.1);
       animation: countPulse 0.85s infinite ease-out;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -589,7 +606,8 @@
 
     .countdown-sub {
       font-size: 16px;
-      color: rgba(255, 255, 255, 0.8);
+      color: #555;
+      font-weight: 700;
       margin-top: 8px;
       letter-spacing: 0.05em;
     }
@@ -600,30 +618,31 @@
       100% { transform: scale(1.0); opacity: 0.9; }
     }
 
-    /* 开始按鈕 */
+    /* 开始按钮（手绘纯黑墨水大按钮） */
     #start-btn {
       width: 100%;
       padding: 14px;
-      border: none;
+      border: 2.5px solid var(--ink);
       border-radius: 14px;
-      background: linear-gradient(135deg, #e551ba, #7c3aed);
-      color: #fff;
+      background: var(--ink);
+      color: #ffffff;
       font-size: 16px;
-      font-weight: 700;
+      font-weight: 800;
       cursor: pointer;
       letter-spacing: 0.02em;
-      transition: opacity 0.2s, transform 0.15s;
-      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
+      transition: all 0.12s ease;
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25);
     }
 
     #start-btn:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
+      background: #2b2b2b;
+      transform: translate(-1px, -1px);
+      box-shadow: 5px 5px 0 var(--ink);
     }
 
     #start-btn:active {
-      opacity: 1;
-      transform: translateY(0);
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 var(--ink);
     }
   </style>
 </head>
@@ -714,7 +733,7 @@
               <span id="pvp-guest-label">对手: 等待加入...</span>
             </div>
           </div>
-          <div id="pvp-room-tip" style="font-size:11px; color:#38bdf8; text-align:center; margin-top:2px;">
+          <div id="pvp-room-tip" style="font-size:11px; color:#666666; text-align:center; margin-top:2px;">
             等待挑战者输入房间码加入...
           </div>
         </div>

@@ -1,12 +1,13 @@
 /**
- * renderer.js —— Canvas 渲染模块
+ * renderer.js —— Canvas 简笔画线条 / 素描草稿纸风格渲染模块
  *
- * 职责：
- *   - 渲染天空渐变背景
- *   - 渲染地形（地面、天花板、特殊地面如冰/传送带/水/泥）
- *   - 渲染起点/终点旗帜
- *   - 渲染玩家和 CPU 角色
- *   - 渲染 HUD（进度条、计时器、关卡指示、结果面板）
+ * 核心美学设计：
+ *   - 极简手绘线条风 (Minimalist Doodle & Line Art)
+ *   - 温暖质感的米白色草稿纸底色 + 浅灰色手绘方格坐标网格
+ *   - 3.5px 纯黑墨水手绘地形轮廓线 + 地下 45° 手绘素描阴影排线 (Hatching)
+ *   - 火柴人纯粹手绘动态美学：蓝色彩铅 (玩家) vs 红色彩铅 (对手)
+ *   - 简笔画符号化特殊地形：手绘波浪纹水面、气泡泥沼、排线台阶、简笔箭头传送带、棋盘格终点旗
+ *   - 手绘便签卡片风格 HUD 结算面板（纯白底、粗黑描边、复古硬投影）
  */
 
 import { T, VIEW_W, START_X } from './constants.js';
@@ -14,20 +15,14 @@ import { terrainIndex, waterLevel } from './terrain.js';
 
 // ─── 辅助函数 ──────────────────────────────────────────────────
 
-/**
- * 获取 CSS 变量的值（用于读取主题色）
- * @param {string} name - CSS 变量名（如 '--player'）
- * @returns {string}
- */
+/** 获取 CSS 变量的值 */
 function cssVar(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return (typeof window !== 'undefined' && window.getComputedStyle)
+    ? getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+    : '';
 }
 
-/**
- * 绘制折线路径（不描边，调用方自行 stroke/fill）
- * @param {CanvasRenderingContext2D} ctx
- * @param {{x,y}[]} pts - 点列
- */
+/** 绘制折线路径（不描边，调用方自行 stroke/fill） */
 function strokePath(ctx, pts) {
   ctx.beginPath();
   ctx.moveTo(pts[0].x, pts[0].y);
@@ -35,9 +30,7 @@ function strokePath(ctx, pts) {
   ctx.stroke();
 }
 
-/**
- * 绘制圆角矩形路径（不描边/填充）
- */
+/** 绘制圆角矩形路径 */
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -48,17 +41,15 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// ─── 角色渲染 ──────────────────────────────────────────────────
+// ─── 角色渲染（火柴人简笔画风格） ──────────────────────────────
 
 /**
- * 在 canvas 上绘制一个物理角色
- *
- * 绘制顺序：躯干 → 头部 → 关节手脚（手脚在最上层）
- * 每条线先画深色描边（--ink），再画角色颜色（b.color），产生描边效果。
+ * 在 canvas 上绘制一个手绘火柴人角色
+ * 纯粹的手绘线条质感：黑墨水躯干 + 灵动小眼睛 + 高饱和度彩铅手绘肢体
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} b      - 物理对象
- * @param {number} alpha  - 透明度（CPU 略透明以示区分）
+ * @param {number} alpha  - 透明度
  */
 export function drawBody(ctx, b, alpha = 1) {
   ctx.save();
@@ -67,30 +58,56 @@ export function drawBody(ctx, b, alpha = 1) {
   ctx.lineJoin = 'round';
   ctx.lineCap  = 'round';
 
-  // 带描边效果的折线绘制函数
-  const line = ln => {
-    ctx.strokeStyle = cssVar('--ink'); ctx.lineWidth = T * 2 + 3; strokePath(ctx, ln);
-    ctx.strokeStyle = b.color;        ctx.lineWidth = T * 2;      strokePath(ctx, ln);
-  };
+  const inkColor = cssVar('--ink') || '#1a1a1a';
+  const limbColor = b.color || cssVar('--player') || '#1a1a1a';
 
-  // 躯干
-  line(b.torsoLine);
+  // 1. 躯干折线（纯黑手绘钢笔线条）
+  ctx.strokeStyle = inkColor;
+  ctx.lineWidth   = 3.5;
+  strokePath(ctx, b.torsoLine);
 
-  // 头部：白色填充圆 + 描边 + 眼睛
+  // 2. 头部：纯白填充圆圈 + 2.5px 纯黑描边 + 灵动小眼睛黑点
   ctx.beginPath();
   ctx.arc(b.head.x, b.head.y, b.head.r, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff'; ctx.fill();
-  ctx.strokeStyle = cssVar('--ink'); ctx.lineWidth = 2.5; ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(b.head.x + b.head.r * 0.45, b.head.y - b.head.r * 0.15, 1.8, 0, Math.PI * 2);
-  ctx.fillStyle = cssVar('--ink'); ctx.fill();
+  ctx.fillStyle   = '#ffffff';
+  ctx.fill();
+  ctx.strokeStyle = inkColor;
+  ctx.lineWidth   = 2.5;
+  ctx.stroke();
 
-  // 关节手脚（绕关节中心旋转后绘制）
+  // 灵动小眼睛（向右注视前方赛道）
+  const eyeR = 1.8;
+  const eyeX = b.head.x + b.head.r * 0.42;
+  const eyeY = b.head.y - b.head.r * 0.12;
+  ctx.beginPath();
+  ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);
+  ctx.fillStyle = inkColor;
+  ctx.fill();
+
+  // 微笑小弧线嘴巴（简笔画手绘细节）
+  ctx.beginPath();
+  ctx.arc(b.head.x + b.head.r * 0.25, b.head.y + b.head.r * 0.28, 3, 0.1 * Math.PI, 0.9 * Math.PI);
+  ctx.strokeStyle = inkColor;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // 3. 关节旋转手脚（纯正手绘墨水线条，旋转产生动感）
   for (const j of b.joints) {
     ctx.save();
     ctx.translate(j.ox, j.oy);
     ctx.rotate(j.a);
-    for (const ln of j.lines) line(ln);
+
+    // 肢体主线条：手绘画笔实线
+    ctx.strokeStyle = limbColor;
+    ctx.lineWidth   = T * 2 - 0.5; // 约 7.5px 饱满手绘画线
+    for (const ln of j.lines) strokePath(ctx, ln);
+
+    // 关节轴心黑色手绘固定铆钉点
+    ctx.beginPath();
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.fillStyle = inkColor;
+    ctx.fill();
+
     ctx.restore();
   }
 
@@ -100,28 +117,22 @@ export function drawBody(ctx, b, alpha = 1) {
 // ─── 主渲染函数 ────────────────────────────────────────────────
 
 /**
- * 渲染一帧完整画面
- *
- * @param {CanvasRenderingContext2D} ctx  - 比赛 canvas 上下文
- * @param {object} state                 - 游戏状态：
- *   { player, cpu, raceTime, stage, result, hud, dpr,
- *     terrainData: { TP, CPL, SECTIONS, FINISH_X },
- *     STAGES, POOL }
+ * 渲染一帧完整画面（简笔画线条 / 素描手绘风格）
  */
 export function render(ctx, state) {
   const { player, cpu, raceTime, stage, result, hud, dpr, terrainData, STAGES, POOL, STAGE_NAMES, mainButtonLabel } = state;
   const { TP, CPL, SECTIONS, FINISH_X } = terrainData;
   const W = ctx.canvas.width, H = ctx.canvas.height;
 
-  // ── 天空渐变 ──
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0,    '#3b4dbf');
-  sky.addColorStop(0.5,  '#8ea4f8');
-  sky.addColorStop(1,    '#d6c8ff');
-  ctx.fillStyle = sky;
+  const inkColor   = cssVar('--ink') || '#1a1a1a';
+  const playerColor = cssVar('--player') || '#1a1a1a';
+  const cpuColor   = cssVar('--cpu') || '#dc2626';
+
+  // ── 1. 温暖的素描草稿纸底色 ──
+  ctx.fillStyle = '#faf8f5';
   ctx.fillRect(0, 0, W, H);
 
-  // ── 相机跟随玩家 ──
+  // ── 2. 相机跟随玩家 ──
   const zoom = W / VIEW_W;
   const VW = VIEW_W, VH = H / zoom;
   const px0 = player ? player.x : START_X;
@@ -133,178 +144,197 @@ export function render(ctx, state) {
   ctx.scale(zoom, zoom);
   ctx.translate(-camX, -camY);
   ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
 
-  // ── 地面 ──
+  // ── 3. 草稿纸方格浅网格线（世界坐标系对齐） ──
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.04)';
+  ctx.lineWidth = 1;
+  const gridSize = 32;
+  const startGridX = Math.floor(camX / gridSize) * gridSize;
+  const endGridX   = camX + VW + gridSize;
+  const startGridY = Math.floor(camY / gridSize) * gridSize;
+  const endGridY   = camY + VH + gridSize;
+
   ctx.beginPath();
-  ctx.moveTo(camX, camY + VH + 10);
-  const i0 = terrainIndex(TP, camX);
-  for (let i = i0; i < TP.length && TP[i].x <= camX + VW + 2; i++) {
-    ctx.lineTo(TP[i].x, TP[i].y);
+  for (let gx = startGridX; gx <= endGridX; gx += gridSize) {
+    ctx.moveTo(gx, startGridY); ctx.lineTo(gx, endGridY);
   }
-  ctx.lineTo(camX + VW + 2, camY + VH + 10);
-  ctx.closePath();
-  ctx.fillStyle = cssVar('--ground');
-  ctx.fill();
-
-  // 地面竖纹（视觉参考线，判断进度）
-  ctx.save(); ctx.clip();
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  const SW = 40;
-  for (let sx = Math.floor(camX / (SW * 2)) * SW * 2; sx < camX + VW; sx += SW * 2) {
-    ctx.fillRect(sx, camY - 10, SW, VH + 20);
+  for (let gy = startGridY; gy <= endGridY; gy += gridSize) {
+    ctx.moveTo(startGridX, gy); ctx.lineTo(endGridX, gy);
   }
+  ctx.stroke();
   ctx.restore();
 
-  // ── 特殊地面材质：传送带 / 冰坡 / 阶梯 / 跨栏 / 高墙 / 锯齿 / 坑洼 ──
+  // ── 4. 地面内部填充与手绘素描 45° 排线 (Hatching) ──
+  ctx.beginPath();
+  ctx.moveTo(camX, camY + VH + 15);
+  const i0 = terrainIndex(TP, camX);
+  for (let i = i0; i < TP.length && TP[i].x <= camX + VW + 4; i++) {
+    ctx.lineTo(TP[i].x, TP[i].y);
+  }
+  ctx.lineTo(camX + VW + 4, camY + VH + 15);
+  ctx.closePath();
+
+  // 素描纸微灰底面填充
+  ctx.fillStyle = '#f3f0e8';
+  ctx.fill();
+
+  // 45° 手绘素描阴影斜排线（在地面内部裁剪）
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.055)';
+  ctx.lineWidth   = 1.2;
+  const hatchStep = 18;
+  const hatchTotalW = VW + VH * 2 + 100;
+  ctx.beginPath();
+  for (let hx = camX - VH - 40; hx < camX + hatchTotalW; hx += hatchStep) {
+    ctx.moveTo(hx, camY - 20);
+    ctx.lineTo(hx + VH + 40, camY + VH + 20);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // ── 5. 特殊地面材质：手绘简笔画符号化设计 ──
   for (const sec of SECTIONS) {
     if (sec.to < camX - 40 || sec.from > camX + VW + 40) continue;
     const iStart = terrainIndex(TP, sec.from);
-    const iEnd = terrainIndex(TP, sec.to);
+    const iEnd   = terrainIndex(TP, sec.to);
 
     if (sec.type === 'ice') {
-      // 冰：晶莹淡蓝反光覆盖层 + 冰晶高光
-      ctx.lineWidth = 7; ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(180, 235, 255, 0.95)';
+      // 冰坡：双层手绘黑实线 + 坡面手绘简笔小雪花晶体 (*)
+      ctx.lineWidth   = 2;
+      ctx.strokeStyle = inkColor;
       ctx.beginPath();
-      for (let i = iStart; i <= iEnd; i++) ctx.lineTo(TP[i].x, TP[i].y + 1);
+      for (let i = iStart; i <= iEnd; i++) ctx.lineTo(TP[i].x, TP[i].y + 4);
       ctx.stroke();
 
-      // 冰面闪光白线
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.beginPath();
-      for (let i = iStart; i <= iEnd; i += 2) ctx.lineTo(TP[i].x, TP[i].y - 0.5);
-      ctx.stroke();
+      // 简笔小雪花点缀
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.font      = '10px monospace';
+      for (let sx = sec.from + 20; sx < sec.to - 10; sx += 45) {
+        const sy = TP[terrainIndex(TP, sx)].y - 6;
+        ctx.fillText('❄', sx, sy);
+      }
 
     } else if (sec.type === 'belt') {
-      // 传送带：工业黑色传动带 + 醒目流动方向箭头
+      // 传送带：手绘双杠导轨 + 两端小圆轴 + 流动手绘空心箭头 >>>
       const beltSpeed = (typeof sec.speed === 'number' && isFinite(sec.speed)) ? sec.speed : -200;
       const off = Math.abs((raceTime * beltSpeed) % 24);
 
-      // 传送带底板
-      ctx.lineWidth = 8; ctx.lineCap = 'square';
-      ctx.strokeStyle = '#374151';
+      // 下轨道黑线
+      ctx.lineWidth = 2; ctx.strokeStyle = inkColor;
       ctx.beginPath();
-      ctx.moveTo(sec.from, TP[iStart].y + 1);
-      ctx.lineTo(sec.to,   TP[iEnd].y + 1);
+      ctx.moveTo(sec.from, TP[iStart].y + 5);
+      ctx.lineTo(sec.to,   TP[iEnd].y + 5);
       ctx.stroke();
 
-      // 两端传动滚轮
+      // 两端手绘小圆轴
       for (const rx of [sec.from, sec.to]) {
-        const ry = TP[terrainIndex(TP, rx)].y;
-        ctx.fillStyle = '#9ca3af';
+        const ry = TP[terrainIndex(TP, rx)].y + 2.5;
         ctx.beginPath();
-        ctx.arc(rx, ry + 2, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#111827';
+        ctx.arc(rx, ry, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff'; ctx.fill();
+        ctx.strokeStyle = inkColor; ctx.stroke();
         ctx.beginPath();
-        ctx.arc(rx, ry + 2, 2, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.arc(rx, ry, 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = inkColor; ctx.fill();
       }
 
-      // 流动反向警示箭头（明显指明带面运动方向）
-      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.5; ctx.lineJoin = 'miter';
-      const arrowStep = 28;
-      for (let sx = sec.from + (off % arrowStep); sx < sec.to - 6; sx += arrowStep) {
+      // 轨道上手绘简笔流动箭头 (>>>)
+      ctx.lineWidth = 1.8; ctx.strokeStyle = inkColor;
+      const arrowStep = 30;
+      for (let sx = sec.from + (off % arrowStep); sx < sec.to - 8; sx += arrowStep) {
         const gy = TP[terrainIndex(TP, sx)].y;
         ctx.beginPath();
-        // 箭头朝左（逆向流速）
-        ctx.moveTo(sx + 8, gy - 3);
-        ctx.lineTo(sx + 2, gy + 1);
-        ctx.lineTo(sx + 8, gy + 5);
+        ctx.moveTo(sx + 7, gy - 4);
+        ctx.lineTo(sx + 1, gy);
+        ctx.lineTo(sx + 7, gy + 4);
         ctx.stroke();
       }
 
     } else if (sec.type === 'hurdles') {
-      // 跨栏：标准红白相间跨栏架材质
+      // 跨栏：简笔画跨栏小木架
       for (let i = iStart; i < iEnd - 3; i++) {
-        // 当地形突起为跨栏时（局部峰值）
-        const curY = TP[i].y;
+        const curY  = TP[i].y;
         const prevY = TP[Math.max(0, i - 1)].y;
         const nextY = TP[Math.min(TP.length - 1, i + 1)].y;
         if (curY < prevY - 10 && Math.abs(curY - nextY) < 10) {
           const hx = TP[i].x;
           const barW = 16;
-          const barH = 5;
-          // 支撑铁架
-          ctx.fillStyle = '#374151';
-          ctx.fillRect(hx - barW / 2 + 1, curY, 2.5, prevY - curY + 2);
-          ctx.fillRect(hx + barW / 2 - 3.5, curY, 2.5, prevY - curY + 2);
-          // 红白条纹栏板
-          ctx.fillStyle = '#ef4444';
-          ctx.fillRect(hx - barW / 2, curY - 2, barW, barH);
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(hx - barW / 4, curY - 2, barW / 4, barH);
-          ctx.fillRect(hx + barW / 8, curY - 2, barW / 4, barH);
-          ctx.strokeStyle = '#1e293b';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(hx - barW / 2, curY - 2, barW, barH);
-          i += 6; // 跳过此跨栏的后续采样点
+          // 简笔小支架线条
+          ctx.strokeStyle = inkColor; ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(hx - barW / 2, prevY); ctx.lineTo(hx - barW / 2, curY - 2);
+          ctx.moveTo(hx + barW / 2, prevY); ctx.lineTo(hx + barW / 2, curY - 2);
+          // 横板（手绘黑白条纹）
+          ctx.rect(hx - barW / 2, curY - 4, barW, 4);
+          ctx.stroke();
+          i += 6;
         }
       }
 
     } else if (sec.type === 'wall' || sec.type === 'climb') {
-      // 高墙：绘制垂直砖石纹理与攀爬边缘
+      // 高墙：垂直纯黑线条 + 墙面手绘水平砖石排线
       for (let i = iStart; i < iEnd; i++) {
         const dy = TP[i + 1].y - TP[i].y;
-        if (dy < -15) { // 垂直上升陡壁
+        if (dy < -15) {
           const wx = TP[i].x;
           const wTop = TP[i + 1].y;
           const wBot = TP[i].y;
-          // 墙体立面阴影
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-          ctx.fillRect(wx - 4, wTop, 6, wBot - wTop);
-          // 墙头金色抓握凸缘
-          ctx.fillStyle = '#fbbf24';
-          ctx.fillRect(wx - 6, wTop - 3, 14, 4);
-          ctx.strokeStyle = '#78350f';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(wx - 6, wTop - 3, 14, 4);
+          // 墙体内部手绘斜横排线
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)'; ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let y = wTop + 8; y < wBot; y += 10) {
+            ctx.moveTo(wx - 6, y); ctx.lineTo(wx, y);
+          }
+          ctx.stroke();
+
+          // 墙头手绘抓握凸起
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = inkColor; ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.rect(wx - 8, wTop - 3, 14, 4);
+          ctx.fill(); ctx.stroke();
         }
       }
 
     } else if (sec.type === 'stairs') {
-      // 阶梯：台阶棱角高光与立面阴影
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-      ctx.lineWidth = 2;
+      // 阶梯：在每个直角竖立面绘制 2~3 条手绘垂直排线，强化立体简笔画感
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
       for (let i = iStart; i < iEnd; i++) {
-        if (Math.abs(TP[i].y - TP[i + 1].y) < 1 && (i > 0 && TP[i].y < TP[i - 1].y - 5)) {
-          // 台阶水平面踏板
-          ctx.beginPath();
-          ctx.moveTo(TP[i].x, TP[i].y);
-          ctx.lineTo(TP[i + 1].x + 30, TP[i].y);
-          ctx.stroke();
+        if (TP[i + 1].y < TP[i].y - 5) {
+          const sx = TP[i].x;
+          for (let sy = TP[i + 1].y + 4; sy < TP[i].y; sy += 6) {
+            ctx.moveTo(sx - 3, sy); ctx.lineTo(sx, sy);
+          }
         }
       }
-
-    } else if (sec.type === 'pits' || sec.type === 'bigpit') {
-      // 凹坑：坑沿黄黑警示条纹
-      for (let i = iStart; i < iEnd; i++) {
-        if (TP[i + 1].y > TP[i].y + 12) {
-          // 下凹坑沿
-          const kx = TP[i].x;
-          const ky = TP[i].y;
-          ctx.fillStyle = '#f59e0b';
-          ctx.fillRect(kx - 10, ky - 3, 12, 4);
-          ctx.fillStyle = '#1e293b';
-          ctx.fillRect(kx - 7, ky - 3, 3, 4);
-          ctx.fillRect(kx - 2, ky - 3, 3, 4);
-        }
-      }
+      ctx.stroke();
     }
   }
 
-  // ── 隧道天花板与岩壁渲染 ──
+  // ── 6. 核心赛道主地表线条：3.5px 纯正黑墨水手绘线条 ──
+  ctx.strokeStyle = inkColor;
+  ctx.lineWidth   = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(TP[i0].x, TP[i0].y);
+  for (let i = i0; i < TP.length && TP[i].x <= camX + VW + 4; i++) {
+    ctx.lineTo(TP[i].x, TP[i].y);
+  }
+  ctx.stroke();
+
+  // ── 7. 隧道天花板与顶棚（手绘草图排线顶棚） ──
   for (const sec of SECTIONS) {
     if (sec.type !== 'tunnel' && sec.type !== 'climb') continue;
     if (sec.to < camX || sec.from > camX + VW) continue;
     const iStart = terrainIndex(CPL, sec.from);
-    const iEnd = terrainIndex(CPL, sec.to);
+    const iEnd   = terrainIndex(CPL, sec.to);
 
-    // 找到区段内实际拥有天花板高度的连续采样段并绘制厚实岩层
     let inCeil = false;
     let ceilStartX = 0;
-    ctx.fillStyle = cssVar('--ground');
 
     for (let i = iStart; i <= iEnd; i++) {
       const pt = CPL[i];
@@ -322,147 +352,156 @@ export function render(ctx, state) {
         inCeil = false;
         ctx.lineTo(CPL[i - 1].x, camY - 20);
         ctx.closePath();
-        ctx.fill();
+        ctx.fillStyle = '#f3f0e8'; ctx.fill();
 
-        // 天花板下边缘岩石高光线与钢结构支柱
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-        ctx.lineWidth = 3;
+        // 天花板手绘下边缘浓黑实线
+        ctx.strokeStyle = inkColor; ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(ceilStartX, CPL[terrainIndex(CPL, ceilStartX)].y);
         ctx.lineTo(CPL[i - 1].x, CPL[i - 1].y);
         ctx.stroke();
-
-        // 隧道入口拱门标识
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillRect(ceilStartX - 4, CPL[terrainIndex(CPL, ceilStartX)].y - 12, 8, 14);
-        ctx.fillRect(CPL[i - 1].x - 4, CPL[i - 1].y - 12, 8, 14);
       }
     }
     if (inCeil) {
       ctx.lineTo(CPL[iEnd].x, camY - 20);
       ctx.closePath();
-      ctx.fill();
+      ctx.fillStyle = '#f3f0e8'; ctx.fill();
     }
   }
 
-  // ── 起点 / 终点旗帜 ──
-  for (const [gx, label] of [[START_X, '起点'], [FINISH_X, '终点']]) {
-    const gy = TP[terrainIndex(TP, gx)].y;
-    ctx.strokeStyle = cssVar('--ink'); ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy - 110); ctx.stroke();
-    // 棋盘格旗子
-    for (let ri = 0; ri < 6; ri++) {
-      for (let k = 0; k < 2; k++) {
-        ctx.fillStyle = (ri + k) % 2 ? '#fff' : cssVar('--ink');
-        ctx.fillRect(gx + k * 8, gy - 110 + ri * 8, 8, 8);
-      }
-    }
-    ctx.fillStyle = cssVar('--ink');
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillText(label, gx + 20, gy - 96);
-  }
-
-  // ── 角色 ──
-  if (cpu)    drawBody(ctx, cpu,    0.85); // CPU 略透明
-  if (player) drawBody(ctx, player, 1);
-
-  // ── 水 / 泥覆盖层（半透明，覆盖在角色上方） ──
+  // ── 8. 水池与泥沼：手绘简笔波纹与气泡 ──
   for (const sec of SECTIONS) {
     if (sec.type !== 'water' && sec.type !== 'mud') continue;
-    if (sec.to < camX || sec.from > camX + VW) continue;
-    const iStart = terrainIndex(TP, sec.from);
-    const iEnd = terrainIndex(TP, sec.to);
+    if (sec.to < camX - 20 || sec.from > camX + VW + 20) continue;
+    const wl = waterLevel(terrainData.WL, (sec.from + sec.to) / 2);
 
-    // 动态提取该水域内的实际水位（保证在任何随机生成下均能精准捕获非 Infinity 水位）
-    let wl = Infinity;
-    for (let i = iStart; i <= iEnd; i++) {
-      if (isFinite(terrainData.WL[i])) {
-        wl = terrainData.WL[i];
-        break;
-      }
-    }
-    if (!isFinite(wl)) continue; // 若无有效水位则跳过
+    if (sec.type === 'water') {
+      // 极简手绘水面微淡纸影
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.035)';
+      ctx.fillRect(sec.from, wl, sec.to - sec.from, 100);
 
-    ctx.beginPath();
-    ctx.moveTo(sec.from, wl);
-    for (let i = iStart; i <= iEnd; i++) {
-      ctx.lineTo(TP[i].x, Math.max(TP[i].y, wl));
-    }
-    ctx.lineTo(sec.to, wl);
-    ctx.closePath();
-
-    if (sec.type === 'mud') {
-      // 泥沼：泥浆渐变
-      const mudGrad = ctx.createLinearGradient(0, wl, 0, wl + 60);
-      mudGrad.addColorStop(0, 'rgba(120, 75, 30, 0.85)');
-      mudGrad.addColorStop(1, 'rgba(80, 45, 15, 0.95)');
-      ctx.fillStyle = mudGrad;
-      ctx.fill();
-
-      // 泥浆表层粘稠边缘线
-      ctx.strokeStyle = 'rgba(180, 120, 60, 0.9)';
-      ctx.lineWidth = 3;
+      // 水面手绘起伏纯黑墨水波浪线 (~)
+      ctx.strokeStyle = inkColor;
+      ctx.lineWidth   = 2.2;
       ctx.beginPath();
       ctx.moveTo(sec.from, wl);
-      ctx.lineTo(sec.to, wl);
-      ctx.stroke();
-    } else {
-      // 水池：水体渐变 + 水面微波
-      const waterGrad = ctx.createLinearGradient(0, wl, 0, wl + 120);
-      waterGrad.addColorStop(0, 'rgba(56, 189, 248, 0.65)');
-      waterGrad.addColorStop(1, 'rgba(3, 105, 161, 0.85)');
-      ctx.fillStyle = waterGrad;
-      ctx.fill();
-
-      // 水面波光粼粼波浪线
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(sec.from, wl);
-      const waveT = raceTime * 4;
-      for (let wx = sec.from; wx <= sec.to; wx += 16) {
-        const wy = wl + Math.sin(wx * 0.08 + waveT) * 2;
+      const waveT = raceTime * 3.5;
+      for (let wx = sec.from; wx <= sec.to; wx += 14) {
+        const wy = wl + Math.sin(wx * 0.12 + waveT) * 2.5;
         ctx.lineTo(wx, wy);
       }
       ctx.stroke();
+
+      // 水下手绘简笔小气泡 (○)
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+      ctx.lineWidth   = 1.2;
+      for (let bx = sec.from + 20; bx < sec.to - 10; bx += 50) {
+        const by = wl + 20 + Math.sin(bx + waveT) * 8;
+        ctx.beginPath();
+        ctx.arc(bx, by, 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+    } else if (sec.type === 'mud') {
+      // 泥浆：淡褐微染 + 泥沼起伏黑线
+      ctx.fillStyle = 'rgba(180, 83, 9, 0.08)';
+      ctx.fillRect(sec.from, wl, sec.to - sec.from, 100);
+
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth   = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(sec.from, wl);
+      const mudT = raceTime * 2;
+      for (let mx = sec.from; mx <= sec.to; mx += 16) {
+        const my = wl + Math.sin(mx * 0.08 + mudT) * 1.8;
+        ctx.lineTo(mx, my);
+      }
+      ctx.stroke();
     }
   }
 
-  ctx.restore(); // 结束缩放/平移变换
+  // ── 9. 起点与终点旗帜（手绘黑白棋盘格与起跑门） ──
+  // 起点：手绘火柴人旗帜
+  const startY = TP[terrainIndex(TP, START_X)].y;
+  ctx.strokeStyle = inkColor; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(START_X, startY); ctx.lineTo(START_X, startY - 45);
+  ctx.stroke();
+  ctx.fillStyle = playerColor;
+  ctx.beginPath();
+  ctx.moveTo(START_X, startY - 45);
+  ctx.lineTo(START_X + 22, startY - 37);
+  ctx.lineTo(START_X, startY - 29);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
 
-  // ── HUD（以 CSS 像素为基准，独立变换） ──
+  // 终点：手绘门架 + 飘动黑白棋盘格旗帜
+  const finY = TP[terrainIndex(TP, FINISH_X)].y;
+  ctx.strokeStyle = inkColor; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(FINISH_X, finY); ctx.lineTo(FINISH_X, finY - 55);
+  ctx.stroke();
+
+  // 手绘飘扬的黑白棋盘旗帜
+  const flagW = 26, flagH = 18;
+  const fx = FINISH_X, fy = finY - 55;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 4; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#1a1a1a' : '#ffffff';
+      ctx.fillRect(fx + c * (flagW / 4), fy + r * (flagH / 3), flagW / 4, flagH / 3);
+    }
+  }
+  ctx.strokeRect(fx, fy, flagW, flagH);
+
+  // ── 10. 角色渲染（火柴人） ──
+  if (cpu)    drawBody(ctx, cpu, 0.92);
+  if (player) drawBody(ctx, player, 1.0);
+
+  ctx.restore(); // 结束世界缩放变换
+
+  // ── 11. HUD 顶部状态与进度条（手绘黑白线条风） ──
   ctx.save();
   ctx.scale(dpr, dpr);
   const cw = W / dpr, ch = H / dpr;
-  const bx = 24, by = 22, bw = cw - 48;
+  const bx = 24, by = 24, bw = cw - 48;
 
-  // 进度条背景线
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
+  // 进度条手绘轨道：2px 纯黑手绘导轨线
+  ctx.strokeStyle = inkColor; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + bw, by); ctx.stroke();
 
-  // 需切换姿势的区段高亮（白色矩形块）
+  // 进度条两端手绘刻度
+  ctx.beginPath();
+  ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by + 4);
+  ctx.moveTo(bx + bw, by - 4); ctx.lineTo(bx + bw, by + 4);
+  ctx.stroke();
+
+  // 障碍区段手绘灰色卡槽
   for (const sec of SECTIONS) {
     if (!POOL.find(c => c.label === sec.label)?.block) continue;
     const x0 = bx + bw * (sec.from - START_X) / (FINISH_X - START_X);
     const x1 = bx + bw * (sec.to   - START_X) / (FINISH_X - START_X);
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fillRect(x0, by - 4, x1 - x0, 8);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(x0, by); ctx.lineTo(x1, by); ctx.stroke();
   }
 
-  // 玩家 / CPU 位置圆点
-  for (const [b, col, r] of [[cpu, '--cpu', 5], [player, '--player', 6]]) {
+  // 玩家（蓝）与 CPU（红）手绘实心位置小球
+  for (const [b, col, r] of [[cpu, cpuColor, 5], [player, playerColor, 6]]) {
     if (!b) continue;
     const t = Math.min(Math.max((b.x - START_X) / (FINISH_X - START_X), 0), 1);
-    ctx.fillStyle = cssVar(col);
-    ctx.beginPath(); ctx.arc(bx + bw * t, by, r, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(bx + bw * t, by, r, 0, Math.PI * 2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.strokeStyle = inkColor; ctx.lineWidth = 1.5; ctx.stroke();
   }
 
-  // 计时器
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'right';
-  ctx.fillText(raceTime.toFixed(1) + ' 秒', cw - 24, 48);
+  // 计时器（纯黑墨水手写质感）
+  ctx.fillStyle = inkColor;
+  ctx.font = 'bold 15px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(raceTime.toFixed(1) + ' 秒', cw - 24, 52);
   ctx.textAlign = 'left';
 
-  // 关卡指示：圆点 + 难度名称（居中排列，适配最多5关）
+  // 关卡指示：手绘小圆点 + 关卡名
   {
     const dotSpacing = Math.min(50, (cw - 120) / Math.max(STAGES.length - 1, 1));
     const totalW = (STAGES.length - 1) * dotSpacing;
@@ -471,48 +510,57 @@ export function render(ctx, state) {
     for (let i = 0; i < STAGES.length; i++) {
       const dx = dotX0 + i * dotSpacing;
       const isCurrent = i === stage;
-      // 圆点
-      ctx.beginPath(); ctx.arc(dx, 48, isCurrent ? 6 : 4, 0, Math.PI * 2);
-      ctx.fillStyle = isCurrent ? '#fff' : 'rgba(255,255,255,0.35)'; ctx.fill();
-      // 难度名称（当前关卡显示完整名；其余小字）
+      ctx.beginPath();
+      ctx.arc(dx, 52, isCurrent ? 5 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = isCurrent ? inkColor : '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = inkColor; ctx.lineWidth = 1.5; ctx.stroke();
+
       if (STAGE_NAMES) {
-        ctx.fillStyle = isCurrent ? '#fff' : 'rgba(255,255,255,0.4)';
+        ctx.fillStyle = isCurrent ? inkColor : '#888';
         ctx.font = isCurrent ? 'bold 9px sans-serif' : '8px sans-serif';
-        ctx.fillText(STAGE_NAMES[i], dx, 62);
+        ctx.fillText(STAGE_NAMES[i], dx, 66);
       }
     }
     ctx.textAlign = 'left';
   }
 
-  // ── 结果面板 ──
+  // ── 12. 冲线结算面板（手绘素描便签白卡片） ──
   if (result) {
     const pw = Math.min(cw - 40, 340), ph = 260;
     const px = (cw - pw) / 2, py = ch * 0.12;
 
-    // 面板背景
-    ctx.fillStyle = 'rgba(255,255,255,0.97)';
-    ctx.strokeStyle = cssVar('--ink'); ctx.lineWidth = 2;
-    roundRect(ctx, px, py, pw, ph, 18); ctx.fill(); ctx.stroke();
+    // 手绘卡片阴影（硬黑色投影）
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+    roundRect(ctx, px + 4, py + 4, pw, ph, 16);
+    ctx.fill();
+
+    // 手绘卡片白色便签纸主体
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = inkColor; ctx.lineWidth = 2.5;
+    roundRect(ctx, px, py, pw, ph, 16);
+    ctx.fill(); ctx.stroke();
 
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
-    // 胜负标题
-    ctx.fillStyle = result === 'WIN' ? cssVar('--player') : cssVar('--cpu');
-    ctx.font = 'bold 34px sans-serif';
-    ctx.fillText(result === 'WIN' ? '冲线！胜利 🎉' : '冲线…败北 😓', cw / 2, py + 44);
+    // 胜负大标题（粗黑有力）
+    const isWin = result === 'WIN';
+    ctx.fillStyle = isWin ? playerColor : cpuColor;
+    ctx.font = '900 32px sans-serif';
+    ctx.fillText(isWin ? '冲线！胜利 🎉' : '冲线…惜败 💨', cw / 2, py + 44);
 
-    // 关卡信息（含难度名称）
+    // 关卡信息
     const diffName = STAGE_NAMES ? STAGE_NAMES[stage] : `第 ${stage + 1} 关`;
-    ctx.fillStyle = cssVar('--ink'); ctx.font = '16px sans-serif';
+    ctx.fillStyle = inkColor; ctx.font = '14px sans-serif';
     ctx.fillText(`第 ${stage + 1} 关【${diffName}】/ 共 ${STAGES.length} 关`, cw / 2, py + 88);
 
-    // 时间
-    ctx.font = 'bold 26px sans-serif';
+    // 用时
+    ctx.font = 'bold 24px monospace';
     ctx.fillText(`用时 ${raceTime.toFixed(2)} 秒`, cw / 2, py + 128);
 
-    // 按钮（重试 / 下一关，分享）
+    // 按钮交互区
     const bBtnW = pw - 48, bBtnH = 40;
-    const defaultLabel = result === 'WIN'
+    const defaultLabel = isWin
       ? (stage + 1 < STAGES.length ? '下一关 →' : '重回第1关')
       : '再来一次';
     const mainLabel = mainButtonLabel || defaultLabel;
@@ -521,13 +569,18 @@ export function render(ctx, state) {
     hud.share   = { x: px + 24, y: py + 212, w: bBtnW, h: bBtnH };
 
     for (const [k, label, fill, color] of [
-      ['restart', mainLabel,  cssVar('--ink'), '#fff'],
-      ['share',   '分享成绩', '#fff',          cssVar('--ink')],
+      ['restart', mainLabel,  inkColor, '#ffffff'],
+      ['share',   '分享战报', '#ffffff', inkColor],
     ]) {
       const r = hud[k];
-      ctx.fillStyle = fill; ctx.strokeStyle = cssVar('--ink'); ctx.lineWidth = 2;
-      roundRect(ctx, r.x, r.y, r.w, r.h, 20); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = color; ctx.font = 'bold 16px sans-serif';
+      // 按钮手绘微投影
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+      roundRect(ctx, r.x + 2, r.y + 2, r.w, r.h, 12); ctx.fill();
+
+      // 按钮主体
+      ctx.fillStyle = fill; ctx.strokeStyle = inkColor; ctx.lineWidth = 2;
+      roundRect(ctx, r.x, r.y, r.w, r.h, 12); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = color; ctx.font = 'bold 15px sans-serif';
       ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2 + 1);
     }
 

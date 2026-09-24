@@ -313,28 +313,47 @@ export class Drawpad {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
-    const inkColor    = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#333';
-    const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim() || '#2563eb';
+    const inkColor    = (typeof document !== 'undefined' && getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()) || '#1a1a1a';
+    const playerColor = (typeof document !== 'undefined' && getComputedStyle(document.documentElement).getPropertyValue('--player').trim()) || '#1a1a1a';
 
-    // ── 关节允许活动范围引导圈（优雅半透明虚线，展示合法区域） ──
+    // ── 画板背景草稿方格 ──
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)';
+    ctx.lineWidth = 1;
+    const gridSpacing = 20;
+    for (let x = 0; x < this.canvas.width; x += gridSpacing) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, this.canvas.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y < this.canvas.height; y += gridSpacing) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(this.canvas.width, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // ── 关节允许活动范围引导圈（优雅手绘虚线，展示合法区域） ──
     for (const j of [SHOULDER, HIP]) {
       const isActive = this.drawing && this.activeJoint === j;
       const isWarn   = isActive && (this.circleAtMax || this.strokeAtMax);
       ctx.save();
       ctx.beginPath();
       ctx.arc(j.x, j.y, MAX_LIMB_RADIUS, 0, Math.PI * 2);
-      ctx.setLineDash([3, 4]);
+      ctx.setLineDash([4, 4]);
       if (isWarn) {
-        ctx.strokeStyle = '#ef4444';
-        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = '#dc2626';
+        ctx.globalAlpha = 0.6;
         ctx.lineWidth   = 2;
       } else if (isActive) {
         ctx.strokeStyle = playerColor;
-        ctx.globalAlpha = 0.35;
+        ctx.globalAlpha = 0.45;
         ctx.lineWidth   = 1.5;
       } else {
         ctx.strokeStyle = inkColor;
-        ctx.globalAlpha = 0.08;
+        ctx.globalAlpha = 0.12;
         ctx.lineWidth   = 1;
       }
       ctx.stroke();
@@ -343,34 +362,69 @@ export class Drawpad {
 
     // ── 淡色操作提示水印（始终显示，不绘制时最明显，绘制时淡出） ──
     const hasStrokes = this.limbs.arm.length + this.limbs.leg.length > 0;
-    const hintAlpha  = this.drawing ? 0.04 : hasStrokes ? 0.08 : 0.18;
+    const hintAlpha  = this.drawing ? 0.05 : hasStrokes ? 0.12 : 0.28;
     const isTouchDev = navigator.maxTouchPoints > 0;
-    const hintText   = isTouchDev ? '长按 → 正圆 (最大半径受限)' : 'Shift + 拖拽 → 正圆 (带尺寸限制)';
+    const hintText   = isTouchDev ? '长按 → 简笔画正圆轮' : 'Shift + 拖拽 → 简笔画正圆轮 (受尺寸限制)';
 
     ctx.save();
     ctx.globalAlpha = hintAlpha;
     ctx.fillStyle   = inkColor;
-    ctx.font        = `11px sans-serif`;
+    ctx.font        = `11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
     ctx.textAlign   = 'center';
     ctx.fillText(hintText, this.canvas.width / 2, this.canvas.height - 10);
     ctx.restore();
 
-    // 人体模板（躯干 + 头部）
-    ctx.strokeStyle = inkColor; ctx.lineWidth = 4;
+    // ── 人体简笔画火柴人模板（躯干 + 手绘头部与萌系小眼睛） ──
+    ctx.save();
+    ctx.strokeStyle = inkColor;
+    ctx.lineWidth = 4;
     strokePath(ctx, TORSO);
+
+    // 火柴人头部
     ctx.beginPath();
     ctx.arc(HEAD.x, HEAD.y, HEAD.r, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#faf8f5';
+    ctx.fill();
+    ctx.stroke();
 
-    // 关节标记（红色圆点）
+    // 火柴人小眼睛（简笔画双点）
+    ctx.fillStyle = inkColor;
+    ctx.beginPath();
+    ctx.arc(HEAD.x + 3, HEAD.y - 3, 1.8, 0, Math.PI * 2);
+    ctx.arc(HEAD.x + 9, HEAD.y - 3, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 微笑弧线
+    ctx.beginPath();
+    ctx.arc(HEAD.x + 6, HEAD.y, 4, 0.2, Math.PI - 0.2);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // 关节标记（手绘墨水外圈 + 彩铅圆心）
     for (const j of [SHOULDER, HIP]) {
-      ctx.beginPath(); ctx.arc(j.x, j.y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = playerColor; ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#faf8f5';
+      ctx.fill();
+      ctx.strokeStyle = inkColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = playerColor;
+      ctx.fill();
+      ctx.restore();
     }
 
-    // 已绘手脚笔划
-    ctx.strokeStyle = playerColor; ctx.lineWidth = 5;
+    // 已绘手脚笔划（纯墨水手绘感线条）
+    ctx.save();
+    ctx.strokeStyle = playerColor;
+    ctx.lineWidth = 6;
     for (const ln of [...this.limbs.arm, ...this.limbs.leg]) strokePath(ctx, ln);
+    ctx.restore();
 
     // ── 预览 ──
     if (this.circleMode && this.circleCenter) {

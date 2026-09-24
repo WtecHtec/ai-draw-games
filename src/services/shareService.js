@@ -52,43 +52,48 @@ export function renderShareCardCanvas(c, { player, stage, stageName, result, rac
   const w = c.width;
   const h = c.height;
 
-  // 1. 深色极光渐变背景
-  const bg = g.createLinearGradient(0, 0, w, h);
-  bg.addColorStop(0, '#0d0f2b');
-  bg.addColorStop(0.4, '#1b1744');
-  bg.addColorStop(0.8, '#2b1654');
-  bg.addColorStop(1, '#100b28');
-  g.fillStyle = bg;
+  // 1. 米白素描纸底色
+  g.fillStyle = '#faf8f5';
   g.fillRect(0, 0, w, h);
 
-  // 柔和光晕
-  const glow1 = g.createRadialGradient(w * 0.2, h * 0.15, 20, w * 0.2, h * 0.15, 300);
-  glow1.addColorStop(0, 'rgba(229, 81, 186, 0.22)');
-  glow1.addColorStop(1, 'rgba(229, 81, 186, 0)');
-  g.fillStyle = glow1;
-  g.fillRect(0, 0, w, h);
+  // 绘制 24px 素描纸网格线
+  g.save();
+  g.strokeStyle = 'rgba(0, 0, 0, 0.04)';
+  g.lineWidth = 1;
+  for (let x = 0; x < w; x += 24) {
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, h);
+    g.stroke();
+  }
+  for (let y = 0; y < h; y += 24) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(w, y);
+    g.stroke();
+  }
+  g.restore();
 
-  const glow2 = g.createRadialGradient(w * 0.85, h * 0.45, 30, w * 0.85, h * 0.45, 320);
-  glow2.addColorStop(0, 'rgba(124, 58, 237, 0.25)');
-  glow2.addColorStop(1, 'rgba(124, 58, 237, 0)');
-  g.fillStyle = glow2;
-  g.fillRect(0, 0, w, h);
+  // 2. 外框：纯墨水手绘双层线框 + 硬阴影
+  const m = 24;
+  // 硬黑阴影
+  fillRoundRect(g, m + 6, m + 6, w - m * 2, h - m * 2, 20, '#1a1a1a', null);
+  // 主纸面
+  fillRoundRect(g, m, m, w - m * 2, h - m * 2, 20, '#ffffff', '#1a1a1a');
 
-  // 2. 外框微光边框
-  const m = 22;
-  fillRoundRect(g, m, m, w - m * 2, h - m * 2, 28, 'rgba(255, 255, 255, 0.02)', 'rgba(255, 255, 255, 0.16)');
+  // 3. 顶部 Header 药丸（手绘线框）
+  fillRoundRect(g, 48 + 3, 48 + 3, w - 96, 44, 12, '#1a1a1a', null);
+  fillRoundRect(g, 48, 48, w - 96, 44, 12, '#faf8f5', '#1a1a1a');
 
-  // 3. 顶部 Header 药丸（游戏名称 + 关卡）
-  fillRoundRect(g, 48, 48, w - 96, 44, 22, 'rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.12)');
-  g.fillStyle = '#fff';
+  g.fillStyle = '#1a1a1a';
   g.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   g.textAlign = 'left';
   g.textBaseline = 'middle';
-  g.fillText('🎨 绘制滚轮赛跑 · DRAW ROLL RACE', 68, 70);
+  g.fillText('✏️ 简笔画滚轮赛跑 · DOODLE ROLL', 68, 70);
 
   g.textAlign = 'right';
   g.font = 'bold 15px -apple-system, BlinkMacSystemFont, sans-serif';
-  g.fillStyle = '#ff70a6';
+  g.fillStyle = '#1a1a1a';
   g.fillText(`第 ${stage + 1} 关 · ${stageName}`, w - 68, 70);
 
   // 4. 胜负大标题 & 趣味称号
@@ -96,36 +101,32 @@ export function renderShareCardCanvas(c, { player, stage, stageName, result, rac
   const fun = getFunTitle(isWin, raceTime);
 
   g.textAlign = 'center';
-  g.font = '900 42px -apple-system, BlinkMacSystemFont, sans-serif';
+  g.font = '900 40px -apple-system, BlinkMacSystemFont, sans-serif';
+  g.fillStyle = '#1a1a1a';
   if (isWin) {
-    g.fillStyle = '#ffd166';
-    g.shadowColor = 'rgba(255, 209, 102, 0.6)';
-    g.shadowBlur = 24;
     g.fillText('🏆 冲 线 大 捷 ！', w / 2, 142);
   } else {
-    g.fillStyle = '#38bdf8';
-    g.shadowColor = 'rgba(56, 189, 248, 0.6)';
-    g.shadowBlur = 24;
     g.fillText('💨 顽 强 完 赛 ！', w / 2, 142);
   }
-  g.shadowBlur = 0; // 重置光晕
 
-  // 趣味称号胶囊
+  // 趣味称号气泡框（纯墨水手绘框）
   const titleText = `【 ${fun.title} 】`;
-  g.font = 'bold 22px -apple-system, BlinkMacSystemFont, sans-serif';
-  const titleWidth = g.measureText(titleText).width + 40;
-  fillRoundRect(g, (w - titleWidth) / 2, 168, titleWidth, 40, 20, 'rgba(229, 81, 186, 0.18)', 'rgba(229, 81, 186, 0.6)');
-  g.fillStyle = '#ff9be3';
-  g.fillText(titleText, w / 2, 188);
+  g.font = 'bold 20px -apple-system, BlinkMacSystemFont, sans-serif';
+  const titleWidth = g.measureText(titleText).width + 36;
+  const titleX = (w - titleWidth) / 2;
+  fillRoundRect(g, titleX + 2, 168 + 2, titleWidth, 38, 10, '#1a1a1a', null);
+  fillRoundRect(g, titleX, 168, titleWidth, 38, 10, '#ffffff', '#1a1a1a');
+  g.fillStyle = isWin ? '#1a1a1a' : '#dc2626';
+  g.fillText(titleText, w / 2, 187);
 
   // 趣味评语
-  g.font = 'italic 15px -apple-system, BlinkMacSystemFont, sans-serif';
-  g.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  g.font = '15px -apple-system, BlinkMacSystemFont, sans-serif';
+  g.fillStyle = '#555555';
   g.fillText(fun.quote, w / 2, 230);
 
-  // 5. 核心数据仪表盘 (3 列式卡片)
+  // 5. 核心数据仪表盘 (3 列式手绘卡片，黑白红经典手绘)
   const cardY = 254;
-  const cardH = 94;
+  const cardH = 92;
   const cardW = (w - 96 - 24) / 3;
 
   const cs = Math.round(raceTime * 100);
@@ -138,55 +139,65 @@ export function renderShareCardCanvas(c, { player, stage, stageName, result, rac
   const beatPct = isWin ? Math.min(99.6, Math.max(82, 100 - raceTime * 1.6)).toFixed(1) + '%' : '极速进阶中';
 
   const stats = [
-    { label: '⏱️ 完赛耗时', val: timeStr, color: '#4ade80' },
-    { label: '🆚 对战对手', val: opponentLabel, color: '#c084fc' },
-    { label: '🔥 击败选手', val: beatPct, color: '#f472b6' },
+    { label: '⏱️ 完赛耗时', val: timeStr, color: '#1a1a1a' },
+    { label: '🆚 对战对手', val: opponentLabel, color: '#1a1a1a' },
+    { label: '🔥 击败选手', val: beatPct, color: '#dc2626' },
   ];
 
   stats.forEach((st, idx) => {
     const cx = 48 + idx * (cardW + 12);
-    fillRoundRect(g, cx, cardY, cardW, cardH, 18, 'rgba(255, 255, 255, 0.06)', 'rgba(255, 255, 255, 0.14)');
+    // 硬黑投影
+    fillRoundRect(g, cx + 3, cardY + 3, cardW, cardH, 12, '#1a1a1a', null);
+    fillRoundRect(g, cx, cardY, cardW, cardH, 12, '#faf8f5', '#1a1a1a');
 
     g.textAlign = 'center';
-    g.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
-    g.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    g.fillText(st.label, cx + cardW / 2, cardY + 30);
+    g.font = 'bold 12px -apple-system, BlinkMacSystemFont, sans-serif';
+    g.fillStyle = '#666666';
+    g.fillText(st.label, cx + cardW / 2, cardY + 28);
 
-    g.font = 'bold 20px -apple-system, BlinkMacSystemFont, sans-serif';
+    g.font = '900 20px -apple-system, BlinkMacSystemFont, sans-serif';
     g.fillStyle = st.color;
-    g.fillText(st.val, cx + cardW / 2, cardY + 66);
+    g.fillText(st.val, cx + cardW / 2, cardY + 64);
   });
 
-  // 6. 专属手绘战车展示台 (Hero Feature)
+  // 6. 专属手绘战车展示台 (手绘草图展台)
   const stageBoxY = 366;
-  const stageBoxH = 470;
-  fillRoundRect(g, 48, stageBoxY, w - 96, stageBoxH, 24, 'rgba(255, 255, 255, 0.04)', 'rgba(255, 255, 255, 0.12)');
+  const stageBoxH = 460;
+  fillRoundRect(g, 48 + 4, stageBoxY + 4, w - 96, stageBoxH, 16, '#1a1a1a', null);
+  fillRoundRect(g, 48, stageBoxY, w - 96, stageBoxH, 16, '#faf8f5', '#1a1a1a');
 
   // 展示台标语
-  fillRoundRect(g, (w - 200) / 2, stageBoxY + 16, 200, 30, 15, 'rgba(255, 255, 255, 0.08)');
-  g.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  fillRoundRect(g, (w - 200) / 2 + 2, stageBoxY + 16 + 2, 200, 28, 8, '#1a1a1a', null);
+  fillRoundRect(g, (w - 200) / 2, stageBoxY + 16, 200, 28, 8, '#ffffff', '#1a1a1a');
+  g.fillStyle = '#1a1a1a';
   g.font = 'bold 13px -apple-system, BlinkMacSystemFont, sans-serif';
-  g.fillText('👑 玩家专属手绘战车', w / 2, stageBoxY + 31);
+  g.fillText('👑 玩家专属手绘火柴人战车', w / 2, stageBoxY + 30);
 
-  // 展台聚光灯地面与阴影
+  // 展台手绘排线地面 (Hatching)
   const pedestalY = stageBoxY + stageBoxH - 60;
-  const spotGrad = g.createRadialGradient(w / 2, pedestalY - 20, 10, w / 2, pedestalY - 20, 240);
-  spotGrad.addColorStop(0, 'rgba(124, 58, 237, 0.4)');
-  spotGrad.addColorStop(0.6, 'rgba(229, 81, 186, 0.15)');
-  spotGrad.addColorStop(1, 'rgba(229, 81, 186, 0)');
-  g.fillStyle = spotGrad;
-  g.fillRect(48, stageBoxY + 40, w - 96, stageBoxH - 60);
-
-  // 展台发光椭圆环
+  g.save();
+  // 展台轮廓
   g.beginPath();
-  g.ellipse(w / 2, pedestalY, 210, 28, 0, 0, Math.PI * 2);
-  g.fillStyle = 'rgba(255, 255, 255, 0.08)';
+  g.ellipse(w / 2, pedestalY, 210, 24, 0, 0, Math.PI * 2);
+  g.fillStyle = '#ffffff';
   g.fill();
-  g.lineWidth = 2;
-  g.strokeStyle = 'rgba(229, 81, 186, 0.6)';
+  g.lineWidth = 2.5;
+  g.strokeStyle = '#1a1a1a';
   g.stroke();
 
-  // 居中绘制放大的玩家手绘战车
+  // 展台内部手绘排线
+  g.clip();
+  g.beginPath();
+  g.strokeStyle = 'rgba(0, 0, 0, 0.18)';
+  g.lineWidth = 1.5;
+  for (let x = w / 2 - 250; x < w / 2 + 250; x += 10) {
+    g.moveTo(x, pedestalY - 40);
+    g.lineTo(x + 40, pedestalY + 40);
+  }
+  g.stroke();
+  g.restore();
+
+  // 居中绘制放大的玩家手绘火柴人战车
   const scale = Math.min(4.8, 300 / (player.rad || 36));
   g.save();
   g.translate(w / 2, pedestalY - player.rad * scale);
@@ -194,135 +205,169 @@ export function renderShareCardCanvas(c, { player, stage, stageName, result, rac
   drawBody(g, { ...player, x: 0, y: 0 }, 1);
   g.restore();
 
-  // 7. 底部传播 Footer 与印章认证
-  const footerY = 856;
+  // 7. 底部传播 Footer 与手绘印章
+  const footerY = 852;
   g.beginPath();
   g.moveTo(48, footerY);
   g.lineTo(w - 48, footerY);
-  g.lineWidth = 1;
-  g.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  g.lineWidth = 2;
+  g.strokeStyle = '#1a1a1a';
   g.stroke();
 
   // 左侧传播引导
   g.textAlign = 'left';
-  g.font = 'bold 16px -apple-system, BlinkMacSystemFont, sans-serif';
-  g.fillStyle = '#fff';
-  g.fillText('🕹️ 随手一画就能跑，敢来挑战我的成绩吗？', 58, footerY + 36);
+  g.font = 'bold 15px -apple-system, BlinkMacSystemFont, sans-serif';
+  g.fillStyle = '#1a1a1a';
+  g.fillText('🕹️ 随手一画就能跑，敢来挑战我的手绘轮子吗？', 58, footerY + 34);
 
-  g.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
-  g.fillStyle = 'rgba(255, 255, 255, 0.55)';
-  g.fillText('物理引擎极速竞速 · 自由发挥天马行空滚轮设计', 58, footerY + 62);
+  g.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+  g.fillStyle = '#666666';
+  g.fillText('简笔画线条物理竞速 · 自由发挥天马行空滚轮设计', 58, footerY + 60);
 
-  // 认证徽章/印章 (右侧)
-  fillRoundRect(g, w - 176, footerY + 16, 120, 56, 12, 'rgba(255, 255, 255, 0.06)', 'rgba(255, 255, 255, 0.15)');
+  // 手绘认证印章 (右侧经典印泥红)
+  const stampX = w - 176;
+  const stampY = footerY + 16;
+  fillRoundRect(g, stampX + 2, stampY + 2, 120, 54, 8, '#1a1a1a', null);
+  fillRoundRect(g, stampX, stampY, 120, 54, 8, '#ffffff', '#1a1a1a');
+
   g.textAlign = 'center';
-  g.font = 'bold 12px monospace';
-  g.fillStyle = '#ff70a6';
-  g.fillText('OFFICIAL RUN', w - 116, footerY + 36);
-  g.font = '11px monospace';
-  g.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  g.font = 'bold 11px monospace';
+  g.fillStyle = '#dc2626';
+  g.fillText('OFFICIAL SKETCH', stampX + 60, stampY + 22);
+  g.font = '10px monospace';
+  g.fillStyle = '#1a1a1a';
   const now = new Date();
   const dateStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`;
-  g.fillText(dateStr, w - 116, footerY + 54);
+  g.fillText(dateStr, stampX + 60, stampY + 40);
 }
 
-/** 生成分享图片并调用系统分享 / 弹窗展示 */
+/** 生成分享图片并弹窗展示（解决重复触发与双图问题） */
 export function shareResult({ player, stage, stageName, result, raceTime, cpuMode }) {
   if (!player || sharing) return;
+  sharing = true;
 
-  const cs = Math.round(raceTime * 100);
-  const timeStr = `${String(Math.floor(cs / 100)).padStart(2, '0')}:${String(cs % 100).padStart(2, '0')}`;
-  const isWin = result === 'WIN';
-  const fun = getFunTitle(isWin, raceTime);
-  const oppText = cpuMode === 'pvp'
-    ? '👥 双人对决'
-    : cpuMode === 'qwen'
-      ? '🧠 Qwen 手绘'
-      : cpuMode === 'jev' ? '✨ TypeSafe Jev AI' : '⚙️ 规则对手';
+  try {
+    const cs = Math.round(raceTime * 100);
+    const timeStr = `${String(Math.floor(cs / 100)).padStart(2, '0')}:${String(cs % 100).padStart(2, '0')}`;
+    const isWin = result === 'WIN';
+    const fun = getFunTitle(isWin, raceTime);
+    const oppText = cpuMode === 'pvp'
+      ? '👥 双人对决'
+      : cpuMode === 'qwen'
+        ? '🧠 Qwen 手绘'
+        : cpuMode === 'jev' ? '✨ TypeSafe Jev AI' : '⚙️ 规则对手';
 
-  // 1. 生成 750×1000 高清卡片画布
-  const c = document.createElement('canvas');
-  c.width = 750;
-  c.height = 1000;
-  renderShareCardCanvas(c, {
-    player, stage, stageName, result, raceTime, cpuMode,
-  });
+    // 1. 生成 750×1000 高清卡片画布
+    const c = document.createElement('canvas');
+    c.width = 750;
+    c.height = 1000;
+    renderShareCardCanvas(c, {
+      player, stage, stageName, result, raceTime, cpuMode,
+    });
 
-  const dataUrl = c.toDataURL('image/png');
+    const dataUrl = c.toDataURL('image/png');
 
-  // 2. 组装社交传播文案
-  const head = isWin ? `🏆 我在【绘制滚轮赛跑】${stageName}通关！` : `💥 我在【绘制滚轮赛跑】${stageName}发起挑战！`;
-  const text = `${head}\n荣获称号：${fun.title}\n完赛耗时：${timeStr} ｜ 对战：${oppText}\n${fun.quote}\n\n来试试你画的轮子能跑多快 👉 ${location.href.split(/[?#]/)[0]}\n#绘制滚轮赛跑 #独立游戏`;
-  const intent = 'https://x.com/intent/post?text=' + encodeURIComponent(text);
+    // 2. 组装社交传播文案
+    const head = isWin ? `🏆 我在【简笔画滚轮赛跑】${stageName}通关！` : `💥 我在【简笔画滚轮赛跑】${stageName}发起挑战！`;
+    const text = `${head}\n荣获称号：${fun.title}\n完赛耗时：${timeStr} ｜ 对战：${oppText}\n${fun.quote}\n\n来试试你画的简笔画轮子能跑多快 👉 ${location.href.split(/[?#]/)[0]}\n#简笔画滚轮赛跑 #独立游戏`;
+    const intent = 'https://x.com/intent/post?text=' + encodeURIComponent(text);
 
-  const bin = atob(dataUrl.split(',')[1]);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const file = new File([bytes], 'draw-roll-race.png', { type: 'image/png' });
+    // 3. 将二进制图片准备为 Blob
+    const bin = atob(dataUrl.split(',')[1]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'image/png' });
 
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    // 移动端：通过系统分享面板发送（支持微信、相册、X 等）
-    sharing = true;
-    navigator.share({ files: [file], text })
-      .catch(err => { if (!err || err.name !== 'AbortError') showShareImage(dataUrl, intent, text); })
-      .finally(() => { sharing = false; });
-  } else {
-    showShareImage(dataUrl, intent, text);
+    // 4. 直接展示纯手绘风格战绩弹窗（用户可直观复制单张图片或下载保存，彻底避免双图 Bug）
+    showShareImage(dataUrl, intent, text, blob);
+  } finally {
+    // 防抖：500ms 后释放锁
+    setTimeout(() => { sharing = false; }, 500);
   }
 }
 
-/** 在页面内以精致毛玻璃弹窗展示分享卡片（支持保存图片与一键复制文案） */
-export function showShareImage(dataUrl, intent, text) {
+/** 在页面内以极简手绘草稿图纸风格展示分享卡片（支持单张图片复制、保存与分享） */
+export function showShareImage(dataUrl, intent, text, blob) {
+  // 严格清除已有弹窗，确保 DOM 中永远只有 1 个实例
   document.getElementById('share-overlay')?.remove();
+
   const box = document.createElement('div');
   box.id = 'share-overlay';
-  box.style.cssText = 'position:fixed;inset:0;background:rgba(10,12,28,0.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;z-index:200;padding:16px;box-sizing:border-box;';
+  box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;z-index:200;padding:16px;box-sizing:border-box;backdrop-filter:blur(3px);';
 
   const card = document.createElement('div');
-  card.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);border-radius:24px;padding:20px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;max-width:min(90vw, 420px);box-shadow:0 24px 60px rgba(0,0,0,0.6);';
+  card.style.cssText = 'background:#faf8f5;border:3px solid #1a1a1a;border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;max-width:min(90vw, 420px);box-shadow:6px 6px 0 #1a1a1a;box-sizing:border-box;';
 
   const titleRow = document.createElement('div');
-  titleRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;color:#fff;';
-  titleRow.innerHTML = '<span style="font-weight:700;font-size:16px;">📸 专属战绩卡已生成</span><span id="share-close-btn" style="cursor:pointer;font-size:18px;opacity:0.6;padding:4px;">✕</span>';
+  titleRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;color:#1a1a1a;';
+  titleRow.innerHTML = '<span style="font-weight:800;font-size:16px;">📸 手绘战绩卡片</span><span id="share-close-btn" style="cursor:pointer;font-size:20px;font-weight:bold;line-height:1;padding:4px;" title="关闭">✕</span>';
   card.appendChild(titleRow);
 
   const img = document.createElement('img');
   img.src = dataUrl;
-  img.alt = '战绩分享卡片';
-  img.style.cssText = 'width:100%;max-height:56vh;object-fit:contain;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.5);';
+  img.alt = '简笔画战绩卡片';
+  img.style.cssText = 'width:100%;max-height:54vh;object-fit:contain;border:2px solid #1a1a1a;border-radius:8px;box-shadow:3px 3px 0 #1a1a1a;display:block;';
   card.appendChild(img);
 
   const hintText = document.createElement('p');
-  hintText.textContent = '💡 手机端可长按图片保存，电脑端右键复制';
-  hintText.style.cssText = 'margin:0;font-size:12px;color:rgba(255,255,255,0.6);text-align:center;';
+  hintText.textContent = '💡 点击下方“复制图片”可直接在微信/QQ等按 Ctrl+V / 粘贴发送';
+  hintText.style.cssText = 'margin:0;font-size:11px;color:#666666;text-align:center;line-height:1.4;';
   card.appendChild(hintText);
 
   const btnRow = document.createElement('div');
-  btnRow.style.cssText = 'display:flex;gap:10px;width:100%;justify-content:center;';
+  btnRow.style.cssText = 'display:flex;gap:8px;width:100%;justify-content:center;flex-wrap:wrap;';
 
-  // 复制战报按钮
-  const copyBtn = document.createElement('button');
-  copyBtn.type = 'button';
-  copyBtn.textContent = '📋 复制战报';
-  copyBtn.style.cssText = 'flex:1;padding:10px 12px;border:none;border-radius:12px;background:rgba(255,255,255,0.14);color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.2s;';
-  copyBtn.addEventListener('click', () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => {
-        copyBtn.textContent = '✅ 已复制！';
-        setTimeout(() => { copyBtn.textContent = '📋 复制战报'; }, 2000);
-      });
+  // 1. 复制图片按钮（写入纯单个 PNG 图片到系统剪贴板，彻底杜绝双图 Bug）
+  const copyImgBtn = document.createElement('button');
+  copyImgBtn.type = 'button';
+  copyImgBtn.textContent = '🖼️ 复制图片';
+  copyImgBtn.style.cssText = 'flex:1;min-width:110px;padding:9px 12px;border:2px solid #1a1a1a;border-radius:10px;background:#ffffff;color:#1a1a1a;font-size:13px;font-weight:800;cursor:pointer;box-shadow:2px 2px 0 #1a1a1a;transition:all 0.12s;';
+  
+  copyImgBtn.addEventListener('click', async () => {
+    try {
+      if (blob && navigator.clipboard && window.ClipboardItem) {
+        const item = new ClipboardItem({ 'image/png': blob });
+        await navigator.clipboard.write([item]);
+        copyImgBtn.textContent = '✅ 图片已复制！';
+        setTimeout(() => { copyImgBtn.textContent = '🖼️ 复制图片'; }, 2200);
+        return;
+      }
+      throw new Error('ClipboardItem not supported');
+    } catch {
+      // 降级为自动下载图片
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'doodle-race-score.png';
+      a.click();
+      copyImgBtn.textContent = '📥 已保存图片！';
+      setTimeout(() => { copyImgBtn.textContent = '🖼️ 复制图片'; }, 2200);
     }
   });
-  btnRow.appendChild(copyBtn);
+  btnRow.appendChild(copyImgBtn);
 
-  // X 分享按钮
+  // 2. 保存图片文件按钮
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = '📥 保存图片';
+  saveBtn.style.cssText = 'flex:1;min-width:100px;padding:9px 12px;border:2px solid #1a1a1a;border-radius:10px;background:#ffffff;color:#1a1a1a;font-size:13px;font-weight:800;cursor:pointer;box-shadow:2px 2px 0 #1a1a1a;transition:all 0.12s;';
+  saveBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'doodle-race-score.png';
+    a.click();
+    saveBtn.textContent = '✅ 已下载！';
+    setTimeout(() => { saveBtn.textContent = '📥 保存图片'; }, 2200);
+  });
+  btnRow.appendChild(saveBtn);
+
+  // 3. X 分享按钮（手绘纯黑边框白底）
   if (intent) {
     const xBtn = document.createElement('a');
     xBtn.href = intent;
     xBtn.target = '_blank';
     xBtn.rel = 'noopener';
     xBtn.textContent = '🚀 发布到 X';
-    xBtn.style.cssText = 'flex:1;padding:10px 12px;border-radius:12px;background:linear-gradient(135deg,#e551ba,#7c3aed);color:#fff;font-size:13px;font-weight:700;text-decoration:none;text-align:center;box-sizing:border-box;box-shadow:0 4px 15px rgba(124,58,237,0.3);';
+    xBtn.style.cssText = 'flex:1;min-width:90px;padding:9px 12px;border:2px solid #1a1a1a;border-radius:10px;background:#ffffff;color:#1a1a1a;font-size:13px;font-weight:800;text-decoration:none;text-align:center;box-sizing:border-box;box-shadow:2px 2px 0 #1a1a1a;';
     btnRow.appendChild(xBtn);
   }
 

@@ -106,7 +106,7 @@ aiController.init({
 // ─── 画板初始化 ────────────────────────────────────────────────
 const drawpad = new Drawpad(padCanvas, limbs => {
   const tf = makeTerrainFns(terrainData);
-  const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim() || '#2563eb';
+  const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim() || '#1a1a1a';
   if (!player) {
     player = makeBody(limbs, playerColor);
     placeAtStart(player, START_X, tf.getTerrainH);
@@ -238,7 +238,7 @@ function startRace(options = {}) {
   terrainData = buildCourse(stage, { seed: (cpuMode === 'pvp' && pvpService.seed != null) ? pvpService.seed : undefined });
   const tf = makeTerrainFns(terrainData);
 
-  const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim() || '#2563eb';
+  const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim() || '#1a1a1a';
   const cpuColor    = getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim() || '#e11d48';
 
   player = makeBody(drawpad.limbs, playerColor);
