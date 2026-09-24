@@ -551,8 +551,22 @@
     let qwenModelReady = false;
     let qwenLoading = false;
 
+    // 读取环境变量中的默认 Jev API Key（若 .env 中配置）
+    const DEFAULT_JEV_API_KEY = (
+      import.meta.env?.VITE_JEV_API_KEY ||
+      import.meta.env?.JEV_API_KEY ||
+      import.meta.env?.VITE_TYPESAFE_API_KEY ||
+      import.meta.env?.TYPESAFE_API_KEY || ''
+    ).trim();
+
     // 从 localStorage 自动填充上次保存的 API Key
-    apiInput.value = localStorage.getItem('typesafe_api_key') || '';
+    const savedApiKey = localStorage.getItem('typesafe_api_key') || '';
+    apiInput.value = savedApiKey;
+    if (DEFAULT_JEV_API_KEY) {
+      apiInput.placeholder = savedApiKey
+        ? '输入 TypeSafe API Key（已配置系统默认，留空即用系统默认）...'
+        : '已配置系统默认 API Key（可留空直接开始）...';
+    }
 
     // 卡片点击 / 键盘选择
     cards.forEach(card => {
@@ -632,7 +646,11 @@
         }
       }
 
-      const apiKey = selectedMode === 'jev' ? apiInput.value.trim() : '';
+      const userInputKey = apiInput.value.trim();
+      if (userInputKey) {
+        localStorage.setItem('typesafe_api_key', userInputKey);
+      }
+      const apiKey = selectedMode === 'jev' ? (userInputKey || DEFAULT_JEV_API_KEY) : '';
       const bffUrl = localStorage.getItem('typesafe_bff_url') || '';
 
       // 等待 game.js ES 模块挂载 __setGameConfig 后设置

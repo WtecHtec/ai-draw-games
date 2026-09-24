@@ -12,7 +12,7 @@
 import { buildCourse, terrain, waterLevel, surfaceAt, ceiling, terrainIndex, POOL, STAGES, STAGE_NAMES } from './terrain.js';
 import { stepBody } from './physics.js';
 import { makeBody, replaceBody, placeAtStart } from './body.js';
-import { CPU_ROUND, CPU_POSES, cpuPlanIndex } from './cpu.js';
+import { CPU_ROUND, CPU_POSES, cpuPlanIndex, resolveOptimalPose } from './cpu.js';
 import { render, drawBody } from './renderer.js';
 import { Drawpad } from './drawpad.js';
 import { START_X, DT, MAX_ACCUM, CPU_SPEED, CPU_DELAY } from './constants.js';
@@ -41,8 +41,13 @@ let cpuWait = -1;    // CPU 等待切换姿势的开始时间
 /** 对战模式：'system' = 规则 AI，'jev' = TypeSafe Jev 模型 */
 let cpuMode = 'system';
 
-/** TypeSafe API Key（用户在启动页输入）*/
-let typesafeApiKey = '';
+/** TypeSafe API Key（用户在启动页输入，或读取 .env 默认配置）*/
+let typesafeApiKey = (typeof import.meta !== 'undefined' && import.meta?.env ? (
+  import.meta.env.VITE_JEV_API_KEY ||
+  import.meta.env.JEV_API_KEY ||
+  import.meta.env.VITE_TYPESAFE_API_KEY ||
+  import.meta.env.TYPESAFE_API_KEY || ''
+) : '').trim();
 
 /** TypeSafe BFF 代理服务地址（可选，默认使用 cf-bff 本地服务）*/
 let typesafeBffUrl = '';
@@ -64,6 +69,14 @@ let qwenStuckRetries = 0;
 
 /** Qwen 模式上一次卡阻位置 X */
 let qwenLastStuckX = 0;
+
+/** Qwen 模式当前已处理的区段序号 */
+let qwenSecIdx = 0;
+
+/** 需要调用 WebLLM 破障的真实阻碍地形（平地、丘陵、颠簸、大波浪、冰坡等顺畅路段默认保持圆轮极速疾驰） */
+export const OBSTACLE_TYPES = new Set([
+  'stairs', 'pits', 'bigpit', 'hurdles', 'wall', 'climb', 'tunnel', 'sawtooth', 'belt', 'mud', 'water'
+]);
 
 /** HUD 按钮区域（供点击检测）*/
 const hud = {};
@@ -137,7 +150,13 @@ function updateQwenHud(text) {
  */
 window.__setGameConfig = (mode, key, bffUrl) => {
   cpuMode = mode;
-  typesafeApiKey = key || '';
+  const envDefaultKey = (typeof import.meta !== 'undefined' && import.meta?.env ? (
+    import.meta.env.VITE_JEV_API_KEY ||
+    import.meta.env.JEV_API_KEY ||
+    import.meta.env.VITE_TYPESAFE_API_KEY ||
+    import.meta.env.TYPESAFE_API_KEY || ''
+  ) : '').trim();
+  typesafeApiKey = key || envDefaultKey || '';
   typesafeBffUrl = bffUrl || '';
   // 存入 localStorage，下次自动填充
   if (key) localStorage.setItem('typesafe_api_key', key);
@@ -191,6 +210,7 @@ function startRace() {
   cpuInSystemFallback = false;
   qwenStuckRetries = 0;
   qwenLastStuckX = START_X;
+  qwenSecIdx = 0;
   const aiBadge = document.getElementById('ai-badge');
   if (aiBadge) {
     aiBadge.textContent = cpuMode === 'qwen'
@@ -199,38 +219,57 @@ function startRace() {
     aiBadge.title = '';
   }
 
-  // Qwen 模式开局即根据初始地形由端侧大模型自主手绘手脚
+  // Qwen 模式：开局默认以 CPU_ROUND 顺畅疾驰起跑；仅当开局即处于阻碍地形时才调用 WebLLM 破障
   if (cpuMode === 'qwen') {
-    if (aiBadge) {
-      aiBadge.textContent = '🧠 思考中...';
-      aiBadge.title = '正在生成起跑形态';
-    }
     const initSec = terrainData.SECTIONS[0]?.type || 'flat';
-    const nextSec = terrainData.SECTIONS[1]?.type || 'flat';
-    const distToUpcoming = terrainData.SECTIONS[1]?.from ? (terrainData.SECTIONS[1].from - START_X) : 0;
-    updateQwenHud(`📍 地形：${initSec}\n💭 正在推演极速起跑最优解...`);
-    generateLimbsWithQwen({
-      currentSection: initSec,
-      targetSection: initSec,
-      upcomingObstacle: nextSec,
-      distToUpcoming,
-    }).then(qwenLimbs => {
-      if (!racing || cpuDone) return;
-      cpu = replaceBody(
-        cpu, qwenLimbs,
-        getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim(),
-        tf.getTerrainH,
-      );
+    if (OBSTACLE_TYPES.has(initSec)) {
       if (aiBadge) {
-        aiBadge.textContent = '🧠 Qwen 手绘';
-        aiBadge.title = qwenLimbs.thought || 'Qwen 自主手绘';
+        aiBadge.textContent = '🧠 思考中...';
+        aiBadge.title = '开局遭遇阻碍，正在生成破障形态';
       }
-      updateQwenHud(`📍 地形：${initSec}\n🎯 最优解：${qwenLimbs.thought}\n🎨 构造：手臂 ${qwenLimbs.arm.length} 笔 / 腿部 ${qwenLimbs.leg.length} 笔`);
-    }).catch(err => {
-      console.warn('Qwen 开局手绘错误:', err);
-      if (aiBadge) aiBadge.textContent = '🧠 Qwen 手绘';
-      updateQwenHud('⚠️ 模型手绘降级');
-    });
+      const nextSec = terrainData.SECTIONS[1]?.type || 'flat';
+      const distToUpcoming = terrainData.SECTIONS[1]?.from ? (terrainData.SECTIONS[1].from - START_X) : 0;
+      const slopeVal = (tf.getTerrainH(START_X + 15) - tf.getTerrainH(START_X - 15)) / 30;
+      const hasSlope = Math.abs(slopeVal) > 0.08;
+      const inWater = tf.getWaterLevel(START_X) < tf.getTerrainH(START_X);
+      const inTunnel = tf.getCeiling(START_X) > -Infinity;
+
+      updateQwenHud(`⚠️ 开局遭遇阻碍：${initSec}\n💭 正在推演破障最优解...`);
+      generateLimbsWithQwen({
+        currentSection: initSec,
+        targetSection: initSec,
+        upcomingObstacle: nextSec,
+        distToUpcoming,
+        hasSlope,
+        slopeDesc: slopeVal > 0.1 ? '下坡俯冲' : (slopeVal < -0.1 ? '上坡爬坡' : '平缓起跑'),
+        inWater,
+        inTunnel,
+        speed: 0,
+      }).then(qwenLimbs => {
+        if (!racing || cpuDone) return;
+        cpu = replaceBody(
+          cpu, qwenLimbs,
+          getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim(),
+          tf.getTerrainH,
+        );
+        if (aiBadge) {
+          aiBadge.textContent = '🧠 Qwen 手绘';
+          aiBadge.title = qwenLimbs.thought || 'Qwen 自主手绘';
+        }
+        updateQwenHud(`📍 障碍变身：${initSec}\n🎯 最优解：${qwenLimbs.thought}\n🚀 全力突破中`);
+      }).catch(err => {
+        console.warn('Qwen 开局手绘错误:', err);
+        if (aiBadge) aiBadge.textContent = '🧠 Qwen 疾驰';
+        updateQwenHud('⚠️ 模型手绘降级');
+      });
+    } else {
+      // 畅通路段：保持圆轮极速起跑，遇到阻碍再去调用 WebLLM
+      if (aiBadge) {
+        aiBadge.textContent = '🧠 Qwen 疾驰';
+        aiBadge.title = '双圆轮极速起跑，遇到阻碍时调用 WebLLM 破障';
+      }
+      updateQwenHud(`📍 畅通路况：${initSec}\n⚡ 双圆轮极速起跑，遇到阻碍时调用 WebLLM 破障！`);
+    }
   } else {
     updateQwenHud('');
   }
@@ -314,35 +353,49 @@ function frame(ts) {
 
         const aiBadge = document.getElementById('ai-badge');
         const currentSec = terrainData.SECTIONS.findLast(s => cpu.x >= s.from) ?? terrainData.SECTIONS[0];
+        const slopeVal = (tf.getTerrainH(cpu.x + 15) - tf.getTerrainH(cpu.x - 15)) / 30;
+        const hasSlope = Math.abs(slopeVal) > 0.08;
+        const inWater = tf.getWaterLevel(cpu.x) < tf.getTerrainH(cpu.x) && cpu.y > tf.getWaterLevel(cpu.x);
+        const inTunnel = tf.getCeiling(cpu.x) > -Infinity;
 
         if (qwenStuckRetries >= 3) {
-          // 持续卡在同一位置 3 次：兜底切换为系统规则姿势脱困，等待下次 WebLLM
+          // 持续卡在同一位置 3 次：进入强力脱困，直接纯净使用系统规则模版（不添加任何其他手脚）
           cpuInSystemFallback = true;
-          const systemPose = terrainData.CPU_PLAN[k]?.pose || 'long';
+          const systemPose = resolveOptimalPose(terrainData, cpu.x, tf);
           cpu = replaceBody(
             cpu, CPU_POSES[systemPose],
             getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim(),
             tf.getTerrainH,
           );
+          cpu.poseName = systemPose;
           cpuPlanIdx = k;
-          cpu.speed = 1.05;
-          if (aiBadge) {
-            aiBadge.textContent = '⚙️ 系统(兜底)';
-            aiBadge.title = `连续3次受阻，兜底使用系统规则(${systemPose})`;
+          cpu.speed = 1.25;
+          // 若为圆轮或坡度水域，赋予向前推进冲量
+          if (systemPose === 'round') {
+            cpu.vx += 30;
           }
-          updateQwenHud(`⚠️ 连续3次受阻，启用系统规则脱困\n🚗 姿势：${systemPose}，等待下一路段恢复 WebLLM`);
+          if (aiBadge) {
+            aiBadge.textContent = '⚙️ 系统(脱困)';
+            aiBadge.title = `连续3次受阻，直接使用系统规则模版(${systemPose})`;
+          }
+          updateQwenHud(`⚠️ 连续3次受阻，直接使用系统【${systemPose}】模版强力脱困\n🚗 越过障碍后自动恢复 WebLLM`);
         } else {
           aiPending = true;
           if (aiBadge) {
             aiBadge.textContent = '🧠 紧急破障';
             aiBadge.title = `卡阻重绘(${qwenStuckRetries}/3)`;
           }
-          updateQwenHud(`⚠️ 卡阻停滞(第${qwenStuckRetries}/3次)！\n💥 正在重绘最强制空翻越形态...`);
+          updateQwenHud(`⚠️ 卡阻停滞(第${qwenStuckRetries}/3次)！\n💥 正在重绘当前场景最优解形态...`);
           generateLimbsWithQwen({
             currentSection: currentSec.type,
             targetSection: currentSec.type,
             isStuck: true,
             stuckCount: qwenStuckRetries,
+            hasSlope,
+            slopeDesc: slopeVal > 0.1 ? '下坡俯冲' : (slopeVal < -0.1 ? '上坡爬坡' : '起伏坡度'),
+            inWater,
+            inTunnel,
+            speed: Math.round(cpu.vx),
           }).then(qwenLimbs => {
             aiPending = false;
             if (!racing || cpuDone) return;
@@ -361,6 +414,44 @@ function frame(ts) {
             aiPending = false;
           });
         }
+      }
+
+      // ─── Qwen 模式系统兜底运行中持续卡阻二次防护 ───
+      if (cpuMode === 'qwen' && cpuInSystemFallback && cpuStuckDuration >= 2.0) {
+        cpuStuckDuration = 0;
+        cpuMaxX = cpu.x;
+        const currentSec = terrainData.SECTIONS.findLast(s => cpu.x >= s.from) ?? terrainData.SECTIONS[0];
+        const currentType = currentSec.type;
+        const slopeVal = (tf.getTerrainH(cpu.x + 15) - tf.getTerrainH(cpu.x - 15)) / 30;
+        const hasSlope = Math.abs(slopeVal) > 0.08;
+        const inWater = tf.getWaterLevel(cpu.x) < tf.getTerrainH(cpu.x) && cpu.y > tf.getWaterLevel(cpu.x);
+
+        let altPose = 'long';
+        if (hasSlope || inWater || ['flat', 'hills', 'wave', 'ice', 'water'].includes(currentType)) {
+          // 有坡度、深水、平地：必须纯净使用系统圆轮 CPU_ROUND（双手双脚皆为圆轮），绝不使用直线手臂！
+          altPose = 'round';
+          cpu.vx += 35; // 赋予顺坡冲刺推进冲量
+        } else if (currentType === 'wall' || currentType === 'climb') {
+          altPose = 'climb';
+          cpu.vy -= 40;
+        } else if (currentType === 'tunnel') {
+          altPose = 'small';
+        } else {
+          // 台阶、坑壁障碍：交替长腿十字并赋予起跳
+          altPose = (cpu.poseName === 'long') ? 'climb' : 'long';
+          cpu.vy -= 25;
+        }
+
+        cpu = replaceBody(
+          cpu, CPU_POSES[altPose],
+          getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim(),
+          tf.getTerrainH,
+        );
+        cpu.poseName = altPose;
+        cpu.speed = 1.35;
+        const aiBadge = document.getElementById('ai-badge');
+        if (aiBadge) aiBadge.textContent = '⚙️ 强力脱困';
+        updateQwenHud(`⚠️ 兜底强化：采用系统纯正【${altPose}】模版脱困！`);
       }
 
       // ─── 系统兜底中，等下次再次卡住（>1.5秒）时重新调用 Jev AI ───
@@ -395,58 +486,96 @@ function frame(ts) {
           });
       }
 
-      // ─── 常规区段切换逻辑 ───
-      if (k !== cpuPlanIdx) {
-        if (cpuMode === 'qwen' && !aiPending) {
-          // 到达新路段/关卡，立即重置系统兜底状态与卡阻计数，恢复 WebLLM 自主手绘
+      // ─── Qwen 模式：在遇到下一个场景前 10 像素时精准触发 WebLLM 决策 ───
+      if (cpuMode === 'qwen' && !aiPending) {
+        const nextSecIdx = qwenSecIdx + 1;
+        const nextSec = terrainData.SECTIONS[nextSecIdx];
+        // 当赛车行驶到距离下一个区段仅剩 2 像素（或已进入该区段）时触发判断
+        if (nextSec && (nextSec.from - cpu.x) <= 2) {
+          qwenSecIdx = nextSecIdx;
           cpuInSystemFallback = false;
           qwenStuckRetries = 0;
           qwenLastStuckX = cpu.x;
 
-          aiPending = true;
           const currentSec = terrainData.SECTIONS.findLast(s => cpu.x >= s.from) ?? terrainData.SECTIONS[0];
-          const upcomingSec = terrainData.SECTIONS.find(s => s.from > cpu.x && s.from <= cpu.x + 120 && s.type !== currentSec.type);
-          const targetSecType = upcomingSec?.type || currentSec.type;
-          const distToUpcoming = upcomingSec ? (upcomingSec.from - cpu.x) : 0;
-          const aiBadge = document.getElementById('ai-badge');
-          if (aiBadge) {
-            aiBadge.textContent = '🧠 思考中...';
-          }
-          updateQwenHud(`📍 即将遭遇：${targetSecType}\n💭 正在推演克制障碍最优解...`);
+          const targetSecType = nextSec.type;
+          const isObstacle = OBSTACLE_TYPES.has(targetSecType);
 
-          generateLimbsWithQwen({
-            currentSection: currentSec.type,
-            targetSection: targetSecType,
-            distToUpcoming,
-          }).then(qwenLimbs => {
-            aiPending = false;
-            if (!racing || cpuDone) return;
-            cpuPlanIdx = k;
-            cpu = replaceBody(
-              cpu, qwenLimbs,
-              getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim(),
-              tf.getTerrainH,
-            );
-            cpu.speed = 1.0;
+          if (isObstacle) {
+            // 遭遇真实阻碍：调用端侧 WebLLM 自由手绘推演克制形态
+            aiPending = true;
+            const distToUpcoming = Math.max(0, nextSec.from - cpu.x);
+            const slopeVal = (tf.getTerrainH(cpu.x + 15) - tf.getTerrainH(cpu.x - 15)) / 30;
+            const hasSlope = Math.abs(slopeVal) > 0.08;
+            const inWater = tf.getWaterLevel(cpu.x) < tf.getTerrainH(cpu.x) && cpu.y > tf.getWaterLevel(cpu.x);
+            const inTunnel = tf.getCeiling(cpu.x) > -Infinity;
+            const aiBadge = document.getElementById('ai-badge');
             if (aiBadge) {
-              aiBadge.textContent = '🧠 Qwen 手绘';
-              aiBadge.title = qwenLimbs.thought || 'Qwen 手绘';
+              aiBadge.textContent = '🧠 思考中...';
             }
-            updateQwenHud(`📍 地形：${targetSecType}\n🎯 必杀解：${qwenLimbs.thought}\n🚀 全速进攻超越中`);
-          }).catch(err => {
-            aiPending = false;
-            console.warn('Qwen 手绘失败，降级到默认:', err);
-            const pose = terrainData.CPU_PLAN[k]?.pose ?? 'round';
+            updateQwenHud(`📍 遭遇阻碍：${targetSecType}\n💭 正在推演克制障碍最优解...`);
+
+            generateLimbsWithQwen({
+              currentSection: currentSec.type,
+              targetSection: targetSecType,
+              distToUpcoming,
+              hasSlope,
+              slopeDesc: slopeVal > 0.1 ? '下坡俯冲' : (slopeVal < -0.1 ? '上坡爬坡' : '平缓路段'),
+              inWater,
+              inTunnel,
+              speed: Math.round(cpu.vx),
+            }).then(qwenLimbs => {
+              aiPending = false;
+              if (!racing || cpuDone) return;
+              cpuPlanIdx = k;
+              cpu = replaceBody(
+                cpu, qwenLimbs,
+                getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim(),
+                tf.getTerrainH,
+              );
+              cpu.speed = 1.0;
+              if (aiBadge) {
+                aiBadge.textContent = '🧠 Qwen 手绘';
+                aiBadge.title = qwenLimbs.thought || 'Qwen 手绘';
+              }
+              updateQwenHud(`📍 障碍变身：${targetSecType}\n🎯 最优解：${qwenLimbs.thought}\n🚀 全速进攻超越中`);
+            }).catch(err => {
+              aiPending = false;
+              console.warn('Qwen 手绘失败，降级到默认:', err);
+              const pose = resolveOptimalPose(terrainData, cpu.x, tf);
+              cpuPlanIdx = k;
+              cpu = replaceBody(
+                cpu, CPU_POSES[pose],
+                getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim(),
+                tf.getTerrainH,
+              );
+              cpu.poseName = pose;
+              if (aiBadge) aiBadge.textContent = '⚙️ 系统(兜底)';
+              updateQwenHud(`📍 阻碍地形：${targetSecType}\n⚠️ 降级使用规则姿势（${pose}）`);
+            });
+          } else {
+            // 开阔顺畅地形（平地、丘陵、颠簸、冰坡等）：不调用 WebLLM，直接恢复圆轮极速疾驰
             cpuPlanIdx = k;
             cpu = replaceBody(
-              cpu, CPU_POSES[pose],
+              cpu, CPU_ROUND,
               getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim(),
               tf.getTerrainH,
             );
-            if (aiBadge) aiBadge.textContent = '⚙️ 系统(兜底)';
-            updateQwenHud(`📍 地形：${targetSecType}\n⚠️ 降级使用规则姿势`);
-          });
-        } else if (cpuMode === 'jev' && !cpuInSystemFallback && !aiPending) {
+            cpu.poseName = 'round';
+            cpu.speed = 1.0;
+            const aiBadge = document.getElementById('ai-badge');
+            if (aiBadge) {
+              aiBadge.textContent = '🧠 Qwen 疾驰';
+              aiBadge.title = '开阔顺畅路段，保持圆轮高速疾驰';
+            }
+            updateQwenHud(`📍 顺畅路段：${targetSecType}\n⚡ 无障碍阻碍，保持双圆轮高速疾驰！`);
+          }
+        }
+      }
+
+      // ─── 常规区段切换逻辑（用于 Jev 与规则模式） ───
+      if (k !== cpuPlanIdx) {
+        if (cpuMode === 'jev' && !cpuInSystemFallback && !aiPending) {
           // Jev 模式正常区段切换
           aiPending = true;
           const planPose = terrainData.CPU_PLAN[k]?.pose;

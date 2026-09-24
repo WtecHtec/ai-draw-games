@@ -103,3 +103,64 @@ export function cpuPlanIndex(cpuPlan, x) {
   }
   return k;
 }
+
+/**
+ * 根据当前物理地形与前方即将遭遇的障碍，智能选择系统规则最优解姿势
+ *
+ * 解决传统查 CPU_PLAN 可能落入过渡区 'round' 导致卡死的漏洞：
+ * - 低矮隧道内：强制 'small'
+ * - 高墙障碍前：强制 'climb'
+ * - 阶梯/凹坑/深坑/跨栏/逆向传送带/泥沼/锯齿：强制 'long'
+ * - 平地/丘陵/波浪/水池/颠簸/冰坡：'round'
+ *
+ * @param {object} terrainData - 关卡地形数据（包含 SECTIONS、CPU_PLAN 等）
+ * @param {number} x           - CPU 当前 X 坐标
+ * @param {object} [tf]        - 地形查询函数集合（包含 getCeiling 等）
+ * @returns {'round'|'long'|'small'|'climb'} 最优姿势名称
+ */
+export function resolveOptimalPose(terrainData, x, tf) {
+  // 1. 如果当前处于低矮隧道天花板下方，强制使用微缩轮
+  if (tf && typeof tf.getCeiling === 'function' && tf.getCeiling(x) > -Infinity) {
+    return 'small';
+  }
+
+  // 2. 检查前方 120px 内即将遭遇的障碍区段以及当前所在区段
+  const currentSec = terrainData?.SECTIONS?.findLast(s => x >= s.from) ?? terrainData?.SECTIONS?.[0];
+  const upcomingSec = terrainData?.SECTIONS?.find(s => s.from > x && s.from <= x + 120);
+
+  // 障碍类型判断优先看即将到达的障碍（提前变形破障），若前方无障碍则看当前所在区段
+  const targetSec = (upcomingSec && upcomingSec.type !== 'flat') ? upcomingSec : currentSec;
+  const targetType = targetSec?.type || 'flat';
+
+  if (targetType === 'tunnel') {
+    return 'small';
+  }
+
+  if (targetType === 'wall') {
+    return 'climb';
+  }
+
+  if (targetType === 'climb') {
+    // climb 是天花板+高墙组合，如果在天花板下返回 small，否则在墙前返回 climb
+    if (tf && typeof tf.getCeiling === 'function' && tf.getCeiling(x + 40) > -Infinity) {
+      return 'small';
+    }
+    return 'climb';
+  }
+
+  if (['stairs', 'pits', 'bigpit', 'hurdles', 'belt', 'mud', 'sawtooth'].includes(targetType)) {
+    return 'long';
+  }
+
+  if (['flat', 'hills', 'bumps', 'wave', 'ice', 'cliff', 'steep', 'water'].includes(targetType)) {
+    return 'round';
+  }
+
+  // 兜底查 CPU_PLAN
+  if (terrainData?.CPU_PLAN) {
+    const k = cpuPlanIndex(terrainData.CPU_PLAN, x);
+    return terrainData.CPU_PLAN[k]?.pose || 'long';
+  }
+
+  return 'round';
+}

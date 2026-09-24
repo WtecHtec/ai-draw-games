@@ -155,49 +155,194 @@ export function render(ctx, state) {
   }
   ctx.restore();
 
-  // ── 特殊地面：传送带 / 冰 ──
+  // ── 特殊地面材质：传送带 / 冰坡 / 阶梯 / 跨栏 / 高墙 / 锯齿 / 坑洼 ──
   for (const sec of SECTIONS) {
-    if (sec.type !== 'belt' && sec.type !== 'ice') continue;
-    if (sec.to < camX || sec.from > camX + VW) continue;
-    ctx.lineWidth = 6; ctx.lineCap = 'butt';
+    if (sec.to < camX - 40 || sec.from > camX + VW + 40) continue;
+    const iStart = terrainIndex(TP, sec.from);
+    const iEnd = terrainIndex(TP, sec.to);
+
     if (sec.type === 'ice') {
-      // 冰：淡蓝色覆盖层
-      ctx.strokeStyle = 'rgba(190,235,255,0.95)';
+      // 冰：晶莹淡蓝反光覆盖层 + 冰晶高光
+      ctx.lineWidth = 7; ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(180, 235, 255, 0.95)';
       ctx.beginPath();
-      for (let i = terrainIndex(TP, sec.from); i <= terrainIndex(TP, sec.to); i++) {
-        ctx.lineTo(TP[i].x, TP[i].y + 1);
+      for (let i = iStart; i <= iEnd; i++) ctx.lineTo(TP[i].x, TP[i].y + 1);
+      ctx.stroke();
+
+      // 冰面闪光白线
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.beginPath();
+      for (let i = iStart; i <= iEnd; i += 2) ctx.lineTo(TP[i].x, TP[i].y - 0.5);
+      ctx.stroke();
+
+    } else if (sec.type === 'belt') {
+      // 传送带：工业黑色传动带 + 醒目流动方向箭头
+      const beltSpeed = (typeof sec.speed === 'number' && isFinite(sec.speed)) ? sec.speed : -200;
+      const off = Math.abs((raceTime * beltSpeed) % 24);
+
+      // 传送带底板
+      ctx.lineWidth = 8; ctx.lineCap = 'square';
+      ctx.strokeStyle = '#374151';
+      ctx.beginPath();
+      ctx.moveTo(sec.from, TP[iStart].y + 1);
+      ctx.lineTo(sec.to,   TP[iEnd].y + 1);
+      ctx.stroke();
+
+      // 两端传动滚轮
+      for (const rx of [sec.from, sec.to]) {
+        const ry = TP[terrainIndex(TP, rx)].y;
+        ctx.fillStyle = '#9ca3af';
+        ctx.beginPath();
+        ctx.arc(rx, ry + 2, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#111827';
+        ctx.beginPath();
+        ctx.arc(rx, ry + 2, 2, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.stroke();
-    } else {
-      // 传送带：深色底 + 流动箭头纹
-      const off = (raceTime * sec.speed * -1) % 24;
-      ctx.strokeStyle = '#555b66'; ctx.lineWidth = 6; ctx.lineCap = 'butt';
-      ctx.beginPath();
-      ctx.moveTo(sec.from, TP[terrainIndex(TP, sec.from)].y + 1);
-      ctx.lineTo(sec.to,   TP[terrainIndex(TP, sec.to)].y + 1);
-      ctx.stroke();
-      ctx.strokeStyle = '#d9dde6'; ctx.lineWidth = 2;
-      for (let sx = sec.from - off; sx < sec.to; sx += 24) {
-        if (sx < sec.from) continue;
+
+      // 流动反向警示箭头（明显指明带面运动方向）
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.5; ctx.lineJoin = 'miter';
+      const arrowStep = 28;
+      for (let sx = sec.from + (off % arrowStep); sx < sec.to - 6; sx += arrowStep) {
         const gy = TP[terrainIndex(TP, sx)].y;
         ctx.beginPath();
-        ctx.moveTo(sx + 5, gy - 2);
-        ctx.lineTo(sx,     gy + 2);
-        ctx.lineTo(sx + 5, gy + 6);
+        // 箭头朝左（逆向流速）
+        ctx.moveTo(sx + 8, gy - 3);
+        ctx.lineTo(sx + 2, gy + 1);
+        ctx.lineTo(sx + 8, gy + 5);
         ctx.stroke();
+      }
+
+    } else if (sec.type === 'hurdles') {
+      // 跨栏：标准红白相间跨栏架材质
+      for (let i = iStart; i < iEnd - 3; i++) {
+        // 当地形突起为跨栏时（局部峰值）
+        const curY = TP[i].y;
+        const prevY = TP[Math.max(0, i - 1)].y;
+        const nextY = TP[Math.min(TP.length - 1, i + 1)].y;
+        if (curY < prevY - 10 && Math.abs(curY - nextY) < 10) {
+          const hx = TP[i].x;
+          const barW = 16;
+          const barH = 5;
+          // 支撑铁架
+          ctx.fillStyle = '#374151';
+          ctx.fillRect(hx - barW / 2 + 1, curY, 2.5, prevY - curY + 2);
+          ctx.fillRect(hx + barW / 2 - 3.5, curY, 2.5, prevY - curY + 2);
+          // 红白条纹栏板
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(hx - barW / 2, curY - 2, barW, barH);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(hx - barW / 4, curY - 2, barW / 4, barH);
+          ctx.fillRect(hx + barW / 8, curY - 2, barW / 4, barH);
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(hx - barW / 2, curY - 2, barW, barH);
+          i += 6; // 跳过此跨栏的后续采样点
+        }
+      }
+
+    } else if (sec.type === 'wall' || sec.type === 'climb') {
+      // 高墙：绘制垂直砖石纹理与攀爬边缘
+      for (let i = iStart; i < iEnd; i++) {
+        const dy = TP[i + 1].y - TP[i].y;
+        if (dy < -15) { // 垂直上升陡壁
+          const wx = TP[i].x;
+          const wTop = TP[i + 1].y;
+          const wBot = TP[i].y;
+          // 墙体立面阴影
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+          ctx.fillRect(wx - 4, wTop, 6, wBot - wTop);
+          // 墙头金色抓握凸缘
+          ctx.fillStyle = '#fbbf24';
+          ctx.fillRect(wx - 6, wTop - 3, 14, 4);
+          ctx.strokeStyle = '#78350f';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(wx - 6, wTop - 3, 14, 4);
+        }
+      }
+
+    } else if (sec.type === 'stairs') {
+      // 阶梯：台阶棱角高光与立面阴影
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 2;
+      for (let i = iStart; i < iEnd; i++) {
+        if (Math.abs(TP[i].y - TP[i + 1].y) < 1 && (i > 0 && TP[i].y < TP[i - 1].y - 5)) {
+          // 台阶水平面踏板
+          ctx.beginPath();
+          ctx.moveTo(TP[i].x, TP[i].y);
+          ctx.lineTo(TP[i + 1].x + 30, TP[i].y);
+          ctx.stroke();
+        }
+      }
+
+    } else if (sec.type === 'pits' || sec.type === 'bigpit') {
+      // 凹坑：坑沿黄黑警示条纹
+      for (let i = iStart; i < iEnd; i++) {
+        if (TP[i + 1].y > TP[i].y + 12) {
+          // 下凹坑沿
+          const kx = TP[i].x;
+          const ky = TP[i].y;
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(kx - 10, ky - 3, 12, 4);
+          ctx.fillStyle = '#1e293b';
+          ctx.fillRect(kx - 7, ky - 3, 3, 4);
+          ctx.fillRect(kx - 2, ky - 3, 3, 4);
+        }
       }
     }
   }
 
-  // ── 隧道天花板 ──
+  // ── 隧道天花板与岩壁渲染 ──
   for (const sec of SECTIONS) {
     if (sec.type !== 'tunnel' && sec.type !== 'climb') continue;
     if (sec.to < camX || sec.from > camX + VW) continue;
-    const x0 = sec.from + 60;
-    const x1 = sec.type === 'climb' ? x0 + 260 : sec.to - 60;
-    const cy  = CPL[terrainIndex(CPL, x0 + 1)].y;
+    const iStart = terrainIndex(CPL, sec.from);
+    const iEnd = terrainIndex(CPL, sec.to);
+
+    // 找到区段内实际拥有天花板高度的连续采样段并绘制厚实岩层
+    let inCeil = false;
+    let ceilStartX = 0;
     ctx.fillStyle = cssVar('--ground');
-    ctx.fillRect(x0, camY - 10, x1 - x0, cy - camY + 10);
+
+    for (let i = iStart; i <= iEnd; i++) {
+      const pt = CPL[i];
+      if (pt.y > -2000) {
+        if (!inCeil) {
+          inCeil = true;
+          ceilStartX = pt.x;
+          ctx.beginPath();
+          ctx.moveTo(pt.x, camY - 20);
+          ctx.lineTo(pt.x, pt.y);
+        } else {
+          ctx.lineTo(pt.x, pt.y);
+        }
+      } else if (inCeil) {
+        inCeil = false;
+        ctx.lineTo(CPL[i - 1].x, camY - 20);
+        ctx.closePath();
+        ctx.fill();
+
+        // 天花板下边缘岩石高光线与钢结构支柱
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(ceilStartX, CPL[terrainIndex(CPL, ceilStartX)].y);
+        ctx.lineTo(CPL[i - 1].x, CPL[i - 1].y);
+        ctx.stroke();
+
+        // 隧道入口拱门标识
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(ceilStartX - 4, CPL[terrainIndex(CPL, ceilStartX)].y - 12, 8, 14);
+        ctx.fillRect(CPL[i - 1].x - 4, CPL[i - 1].y - 12, 8, 14);
+      }
+    }
+    if (inCeil) {
+      ctx.lineTo(CPL[iEnd].x, camY - 20);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   // ── 起点 / 终点旗帜 ──
@@ -225,20 +370,62 @@ export function render(ctx, state) {
   for (const sec of SECTIONS) {
     if (sec.type !== 'water' && sec.type !== 'mud') continue;
     if (sec.to < camX || sec.from > camX + VW) continue;
-    const wl = waterLevel(terrainData.WL, sec.from + 100); // 使用实际水位数组
+    const iStart = terrainIndex(TP, sec.from);
+    const iEnd = terrainIndex(TP, sec.to);
+
+    // 动态提取该水域内的实际水位（保证在任何随机生成下均能精准捕获非 Infinity 水位）
+    let wl = Infinity;
+    for (let i = iStart; i <= iEnd; i++) {
+      if (isFinite(terrainData.WL[i])) {
+        wl = terrainData.WL[i];
+        break;
+      }
+    }
+    if (!isFinite(wl)) continue; // 若无有效水位则跳过
+
     ctx.beginPath();
     ctx.moveTo(sec.from, wl);
-    for (let i = terrainIndex(TP, sec.from); i <= terrainIndex(TP, sec.to); i++) {
+    for (let i = iStart; i <= iEnd; i++) {
       ctx.lineTo(TP[i].x, Math.max(TP[i].y, wl));
     }
     ctx.lineTo(sec.to, wl);
     ctx.closePath();
-    ctx.fillStyle = sec.type === 'mud'
-      ? 'rgba(120,80,40,0.8)'
-      : 'rgba(70,150,235,0.55)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(sec.from, wl); ctx.lineTo(sec.to, wl); ctx.stroke();
+
+    if (sec.type === 'mud') {
+      // 泥沼：泥浆渐变
+      const mudGrad = ctx.createLinearGradient(0, wl, 0, wl + 60);
+      mudGrad.addColorStop(0, 'rgba(120, 75, 30, 0.85)');
+      mudGrad.addColorStop(1, 'rgba(80, 45, 15, 0.95)');
+      ctx.fillStyle = mudGrad;
+      ctx.fill();
+
+      // 泥浆表层粘稠边缘线
+      ctx.strokeStyle = 'rgba(180, 120, 60, 0.9)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(sec.from, wl);
+      ctx.lineTo(sec.to, wl);
+      ctx.stroke();
+    } else {
+      // 水池：水体渐变 + 水面微波
+      const waterGrad = ctx.createLinearGradient(0, wl, 0, wl + 120);
+      waterGrad.addColorStop(0, 'rgba(56, 189, 248, 0.65)');
+      waterGrad.addColorStop(1, 'rgba(3, 105, 161, 0.85)');
+      ctx.fillStyle = waterGrad;
+      ctx.fill();
+
+      // 水面波光粼粼波浪线
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(sec.from, wl);
+      const waveT = raceTime * 4;
+      for (let wx = sec.from; wx <= sec.to; wx += 16) {
+        const wy = wl + Math.sin(wx * 0.08 + waveT) * 2;
+        ctx.lineTo(wx, wy);
+      }
+      ctx.stroke();
+    }
   }
 
   ctx.restore(); // 结束缩放/平移变换
