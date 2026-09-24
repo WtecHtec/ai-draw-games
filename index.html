@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- 移动端主题色（浏览器状态栏颜色） -->
+  <meta name="theme-color" content="#3b4dbf">
+  <!-- iOS 全屏 Web App 支持 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>绘制滚轮赛跑</title>
+  <meta name="description" content="在画板上画出手脚，驱动角色参加物理竞速比赛！">
+  <style>
+    /* ─── CSS 主题变量 ───────────────────────────────── */
+    :root {
+      --ink: #23262b;
+      /* 描边 / 文字颜色 */
+      --player: #e0413a;
+      /* 玩家颜色（红） */
+      --cpu: #3b6ec7;
+      /* CPU 颜色（蓝） */
+      --ground: #2b2f36;
+      /* 地面颜色 */
+      --bg: #7d8fe8;
+      /* 背景色 */
+      --panel: #ffffff;
+      /* 画板背景 */
+      --tool-bg: #f0f2f8;
+      /* 工具栏背景 */
+      --tool-active: #e0413a;
+      /* 选中工具颜色 */
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
+    }
+
+    /* ─── 比赛主画布（全屏） ─── */
+    #race {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: manipulation;
+    }
+
+    /* ─── 底部操作区 ─── */
+    #controls {
+      position: fixed;
+      left: 50%;
+      bottom: max(4vh, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      width: min(88vw, 480px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+
+    /* ─── 工具栏 ─── */
+    #toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 14px;
+      padding: 6px 12px;
+      box-shadow: 0 4px 16px rgba(40, 50, 120, .2);
+    }
+
+    /* AI 模式标记（裁剪溢出，防止长文本撑大工具栏） */
+    #ai-badge {
+      font-size: 10px;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, #e551ba, #7c3aed);
+      border-radius: 8px;
+      padding: 2px 8px;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+      opacity: 0.9;
+      max-width: 90px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+      vertical-align: middle;
+      text-align: center;
+    }
+
+
+    .tool-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 6px 12px;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      background: var(--tool-bg);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      transition: all 0.15s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .tool-btn span {
+      font-size: 10px;
+      color: #666;
+      font-weight: 600;
+    }
+
+    .tool-btn:hover {
+      background: #e8ecff;
+      border-color: rgba(59, 110, 199, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .tool-btn:active {
+      transform: translateY(0);
+      opacity: 0.8;
+    }
+
+    /* ─── 绘制画板 ─── */
+    #pad {
+      display: block;
+      width: 100%;
+      aspect-ratio: 5 / 3;
+      background: var(--panel);
+      border: 3px dashed #c5c9d2;
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(40, 50, 120, .25);
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    /* 画板激活状态 */
+    #pad:active,
+    #pad.drawing {
+      border-color: var(--player);
+      box-shadow: 0 10px 30px rgba(224, 65, 58, .3);
+    }
+
+    /* ─── 左上方 WebLLM 决策提示框 ─── */
+    #qwen-hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 45;
+      max-width: 220px;
+      box-sizing: border-box;
+      background: rgba(10, 15, 30, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #e2e8f0;
+      font-size: 11px;
+      line-height: 1.5;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    #qwen-hud.hidden {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+
+    .qwen-hud-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-weight: 700;
+      font-size: 11px;
+      color: #6ee7b7;
+    }
+
+    .qwen-hud-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: qwenPulse 1.8s infinite ease-in-out;
+    }
+
+    @keyframes qwenPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.85); }
+    }
+
+    .qwen-hud-content {
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: rgba(255, 255, 255, 0.88);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* ─── 提示文字（比赛开始前显示） ─── */
+    #hint {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: rgba(255, 255, 255, 0.9);
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+
+    #hint p {
+      margin: 0;
+      font-size: clamp(14px, 3.5vw, 20px);
+      font-weight: 500;
+      opacity: 0.88;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+      line-height: 1.6;
+    }
+
+    /* ─── 开始引导覆盖层 ─── */
+    #start-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* 游戏背景需要渲染，覆盖层用半透明模糊 */
+      background: rgba(10, 12, 28, 0.72);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: opacity 0.4s ease;
+    }
+
+    #start-overlay.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* 引导卡片主体 */
+    #start-panel {
+      width: min(94vw, 500px);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 24px;
+      padding: 36px 24px 28px;
+      color: #fff;
+      text-align: center;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    #start-panel h1 {
+      margin: 0 0 6px;
+      font-size: clamp(22px, 5vw, 30px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    #start-panel .subtitle {
+      margin: 0 0 24px;
+      font-size: 13px;
+      opacity: 0.65;
+    }
+
+    /* 模式选择卡片布局 */
+    .mode-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .mode-card {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1.5px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 14px 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+
+    .mode-card:hover {
+      background: rgba(255, 255, 255, 0.13);
+      transform: translateY(-2px);
+    }
+
+    .mode-card.selected {
+      border-color: rgba(229, 81, 186, 0.9);
+      background: rgba(229, 81, 186, 0.12);
+      box-shadow: 0 0 18px rgba(229, 81, 186, 0.3);
+    }
+
+    .mode-card.selected.jev-card {
+      border-color: rgba(124, 58, 237, 0.9);
+      background: rgba(124, 58, 237, 0.12);
+      box-shadow: 0 0 18px rgba(124, 58, 237, 0.35);
+    }
+
+    .mode-card.selected.qwen-card {
+      border-color: rgba(16, 185, 129, 0.9);
+      background: rgba(16, 185, 129, 0.12);
+      box-shadow: 0 0 18px rgba(16, 185, 129, 0.35);
+    }
+
+    .mode-card .card-icon {
+      font-size: 28px;
+      margin-bottom: 8px;
+      line-height: 1;
+    }
+
+    .mode-card h3 {
+      margin: 0 0 4px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .mode-card p {
+      margin: 0;
+      font-size: 11px;
+      opacity: 0.6;
+      line-height: 1.4;
+    }
+
+    /* API Key 配置区 */
+    #api-key-section {
+      margin-bottom: 16px;
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.35s ease, opacity 0.35s ease;
+      opacity: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #api-key-section.visible {
+      max-height: 60px;
+      opacity: 1;
+    }
+
+    #api-key-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 14px;
+      border: 1.5px solid rgba(124, 58, 237, 0.5);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    #api-key-input::placeholder {
+      color: rgba(255, 255, 255, 0.35);
+    }
+
+    #api-key-input:focus {
+      border-color: rgba(124, 58, 237, 0.9);
+    }
+
+    /* Qwen WebLLM 状态与进度条 */
+    #qwen-section {
+      margin-bottom: 16px;
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.35s ease, opacity 0.35s ease;
+      opacity: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-align: left;
+    }
+
+    #qwen-section.visible {
+      max-height: 90px;
+      opacity: 1;
+    }
+
+    .qwen-status-text {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.75);
+      line-height: 1.4;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .qwen-progress-bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .qwen-progress-inner {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10b981, #06b6d4);
+      border-radius: 3px;
+      transition: width 0.15s ease;
+    }
+
+    /* 开始按鈕 */
+    #start-btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #e551ba, #7c3aed);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: opacity 0.2s, transform 0.15s;
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
+    }
+
+    #start-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    #start-btn:active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+
+<body>
+
+
+  <!-- 开始引导覆盖层 -->
+  <div id="start-overlay" role="dialog" aria-modal="true" aria-label="选择AI对手">
+    <div id="start-panel">
+      <h1>🎨 绘制滚轮赛跑</h1>
+      <p class="subtitle">选择你的对战对手</p>
+
+      <div class="mode-cards">
+        <!-- 规则 AI 卡片 -->
+        <div class="mode-card selected" id="card-system" data-mode="system" role="radio" aria-checked="true"
+          tabindex="0">
+          <div class="card-icon">⚙️</div>
+          <h3>规则对手</h3>
+          <p>按地形智能切换<br>本地运行·无需联网</p>
+        </div>
+        <!-- Jev AI 卡片 -->
+        <div class="mode-card jev-card" id="card-jev" data-mode="jev" role="radio" aria-checked="false" tabindex="0">
+          <div class="card-icon">✨</div>
+          <h3>Jev AI</h3>
+          <p>TypeSafe 实时决策<br>真正自适应对手</p>
+        </div>
+        <!-- Qwen2.5 WebLLM 卡片 -->
+        <div class="mode-card qwen-card" id="card-qwen" data-mode="qwen" role="radio" aria-checked="false" tabindex="0">
+          <div class="card-icon">🧠</div>
+          <h3>Qwen 手绘</h3>
+          <p>WebLLM 自由点列<br>端侧大模型画肢体</p>
+        </div>
+      </div>
+
+      <!-- API Key 配置（选择 Jev 时展开） -->
+      <div id="api-key-section">
+        <input id="api-key-input" type="password" placeholder="输入 TypeSafe API Key..." autocomplete="off"
+          spellcheck="false">
+      </div>
+
+      <!-- Qwen WebLLM 模型下载与状态区（选择 Qwen 时展开） -->
+      <div id="qwen-section">
+        <div class="qwen-status-text">
+          <span id="qwen-status-label">端侧 Qwen2.5-0.5B (约320MB，需WebGPU)</span>
+          <span id="qwen-status-pct">0%</span>
+        </div>
+        <div class="qwen-progress-bar"><div class="qwen-progress-inner" id="qwen-progress-inner"></div></div>
+      </div>
+
+      <button id="start-btn" type="button">开始游戏 →</button>
+    </div>
+  </div>
+
+  <!-- 左上方 WebLLM 响应与决策提示框 -->
+  <div id="qwen-hud" class="hidden" role="status" aria-live="polite">
+    <div class="qwen-hud-header">
+      <span class="qwen-hud-dot"></span>
+      <span class="qwen-hud-title">🧠 Qwen2.5 决策手绘</span>
+    </div>
+    <div class="qwen-hud-content" id="qwen-hud-text">准备就绪...</div>
+  </div>
+
+  <!-- 比赛主画布 -->
+  <canvas id="race" aria-label="绘制滚轮赛跑比赛场地"></canvas>
+
+  <!-- 开始前提示 -->
+  <div id="hint">
+    <p id="hint-desc">在下方画板上画出手臂和腿<br>画完即开始比赛！</p>
+  </div>
+
+  <!-- 底部操作区 -->
+  <div id="controls">
+    <!-- 工具栏：AI 模式标记（无滚轮提示） -->
+    <div id="toolbar" role="toolbar" aria-label="绘制工具">
+      <span id="ai-badge">⚙️ 规则</span>
+    </div>
+    <!-- 绘制画板 -->
+    <canvas id="pad" width="300" height="180" aria-label="手脚绘制区域"></canvas>
+  </div>
+
+  <!-- 游戏主逻辑（ES 模块） -->
+  <script type="module" src="/src/game.js"></script>
+
+  <script type="module">
+    import { isWebGPUSupported, getOrInitWebLLMEngine } from '/src/llm/webllm.js';
+
+    // ─── 引导覆盖层逻辑 ──────────────────────────────────────────
+    const overlay = document.getElementById('start-overlay');
+    const cards = document.querySelectorAll('.mode-card');
+    const apiSection = document.getElementById('api-key-section');
+    const apiInput = document.getElementById('api-key-input');
+    const qwenSection = document.getElementById('qwen-section');
+    const qwenLabel = document.getElementById('qwen-status-label');
+    const qwenPct = document.getElementById('qwen-status-pct');
+    const qwenProgress = document.getElementById('qwen-progress-inner');
+    const startBtn = document.getElementById('start-btn');
+    const aiBadge = document.getElementById('ai-badge');
+    const hint = document.getElementById('hint');
+    const hintDesc = document.getElementById('hint-desc');
+    const pad = document.getElementById('pad');
+
+    let selectedMode = 'system'; // 默认：规则对手
+    let qwenModelReady = false;
+    let qwenLoading = false;
+
+    // 从 localStorage 自动填充上次保存的 API Key
+    apiInput.value = localStorage.getItem('typesafe_api_key') || '';
+
+    // 卡片点击 / 键盘选择
+    cards.forEach(card => {
+      card.addEventListener('click', () => selectMode(card.dataset.mode));
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          selectMode(card.dataset.mode);
+        }
+      });
+    });
+
+    async function ensureQwenLoaded() {
+      if (qwenModelReady || qwenLoading) return;
+      if (!isWebGPUSupported()) {
+        qwenLabel.textContent = '❌ 当前浏览器未启用 WebGPU，请使用 Chrome/Edge/Safari 18+';
+        qwenLabel.style.color = '#f87171';
+        return;
+      }
+      qwenLoading = true;
+      qwenLabel.textContent = '正在下载 Qwen2.5-0.5B (首次较慢，已开启本地缓存)...';
+      try {
+        await getOrInitWebLLMEngine((report) => {
+          const text = report?.text || '';
+          const match = text.match(/(\d+)%/);
+          const pct = match ? match[1] + '%' : (report?.progress ? Math.round(report.progress * 100) + '%' : '');
+          if (pct) {
+            qwenPct.textContent = pct;
+            qwenProgress.style.width = pct;
+          }
+          if (text) qwenLabel.textContent = text.length > 36 ? text.slice(0, 36) + '...' : text;
+        });
+        qwenModelReady = true;
+        qwenLabel.textContent = '✅ Qwen2.5 模型就绪，随时自主手绘！';
+        qwenLabel.style.color = '#34d399';
+        qwenPct.textContent = '100%';
+        qwenProgress.style.width = '100%';
+      } catch (err) {
+        console.error('Qwen 加载异常:', err);
+        qwenLabel.textContent = '⚠️ 加载失败: ' + (err.message || '网络或显存错误');
+        qwenLabel.style.color = '#f87171';
+      } finally {
+        qwenLoading = false;
+      }
+    }
+
+    function selectMode(mode) {
+      selectedMode = mode;
+      cards.forEach(c => {
+        const active = c.dataset.mode === mode;
+        c.classList.toggle('selected', active);
+        c.setAttribute('aria-checked', String(active));
+      });
+      // 动态切换展开区
+      apiSection.classList.toggle('visible', mode === 'jev');
+      qwenSection.classList.toggle('visible', mode === 'qwen');
+
+      if (mode === 'jev') {
+        setTimeout(() => apiInput.focus(), 310);
+      } else if (mode === 'qwen') {
+        ensureQwenLoaded();
+      }
+    }
+
+    // 「开始游戏」按钮
+    startBtn.addEventListener('click', async () => {
+      if (selectedMode === 'qwen' && !qwenModelReady) {
+        if (!isWebGPUSupported()) {
+          alert('当前浏览器不支持 WebGPU，无法运行端侧 Qwen 模型，将自动切换为规则对手。');
+          selectedMode = 'system';
+        } else {
+          startBtn.disabled = true;
+          startBtn.textContent = '正在准备 Qwen 模型...';
+          await ensureQwenLoaded();
+          startBtn.disabled = false;
+          startBtn.textContent = '开始游戏 →';
+        }
+      }
+
+      const apiKey = selectedMode === 'jev' ? apiInput.value.trim() : '';
+      const bffUrl = localStorage.getItem('typesafe_bff_url') || '';
+
+      // 等待 game.js ES 模块挂载 __setGameConfig 后设置
+      function applyConfig() {
+        if (!window.__setGameConfig) { setTimeout(applyConfig, 30); return; }
+        window.__setGameConfig(selectedMode, apiKey, bffUrl);
+      }
+      applyConfig();
+
+      // 更新工具栏 AI 标记
+      aiBadge.textContent = selectedMode === 'qwen'
+        ? '🧠 Qwen 手绘'
+        : selectedMode === 'jev' ? '✨ Jev AI' : '⚙️ 规则';
+
+      // 开始游戏后彻底移除提示文字，不再显示 hintDesc
+      hint?.remove();
+
+      // 覆盖层淡出消失
+      overlay.classList.add('fade-out');
+      setTimeout(() => overlay.remove(), 450);
+    });
+
+    // ─── 设备检测 & 移动端提示调整 ─────────────────────────────
+    const isTouchDevice = navigator.maxTouchPoints > 0;
+    if (isTouchDevice) {
+      hintDesc.innerHTML = '在下方画板上画出手臂和腿<br><small>长按画板可生成正圆轮子</small>';
+      pad.title = '拖拽绘制手脚，长按生成正圆';
+    }
+
+    // ─── 提示文字：首次触碰画板后隐藏 ─────────────────────────
+    pad.addEventListener('pointerdown', () => hint.classList.add('hidden'), { once: true });
+
+    // ─── 等待 drawpad 实例后安全绑定按钮 ────────────────────────
+    function bindButtons() {
+      if (!window.__drawpad) { setTimeout(bindButtons, 50); return; }
+      const dp = window.__drawpad;
+      document.getElementById('btn-undo')?.addEventListener('click', () => dp.applyUndo());
+      document.getElementById('btn-clear')?.addEventListener('click', () => dp.applyClear());
+    }
+    bindButtons();
+  </script>
+
+</body>
+
+</html>
