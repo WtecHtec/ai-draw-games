@@ -252,6 +252,7 @@ function startRace(options = {}) {
     pvpService.resetRaceState();
   } else {
     cpu = makeBody(CPU_ROUND, cpuColor);
+    cpu.poseName = 'round';
     cpu.speed = (cpuMode === 'jev' || cpuMode === 'qwen') ? 1.0 : CPU_SPEED;
     aiController.reset();
   }

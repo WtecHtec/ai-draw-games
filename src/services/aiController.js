@@ -14,6 +14,7 @@ import { replaceBody } from '../body.js';
 import { queryCpuAI, buildSnapshot } from '../typesafe.js';
 import { generateLimbsWithQwen } from '../llm/webllm.js';
 import { STAGES, STAGE_NAMES } from '../terrain.js';
+import { CPU_SPEED } from '../constants.js';
 
 /** 需要调用 WebLLM 破障的真实阻碍地形 */
 export const OBSTACLE_TYPES = new Set([
@@ -34,8 +35,17 @@ export class AIController {
     this.qwenLastStuckX = 0;
     this.qwenSecIdx = 0;
 
+    // 系统规则模式下的自主切换状态
+    this.systemWaitTime = -1;
+    this.systemTargetPose = null;
+
     this.onUpdateBadge = null;
     this.onUpdateQwenHud = null;
+  }
+
+  _getPoseLabel(pose) {
+    const map = { round: '圆轮', long: '长腿', small: '小轮', climb: '爬墙' };
+    return map[pose] || pose;
   }
 
   init({ cpuMode, typesafeApiKey, typesafeBffUrl, onUpdateBadge, onUpdateQwenHud }) {
@@ -65,6 +75,8 @@ export class AIController {
     this.qwenStuckRetries = 0;
     this.qwenLastStuckX = 0;
     this.qwenSecIdx = 0;
+    this.systemWaitTime = -1;
+    this.systemTargetPose = null;
   }
 
   /**
@@ -87,17 +99,62 @@ export class AIController {
       this.cpuStuckDuration += dt;
     }
 
-    const cpuColor = getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim() || '#e11d48';
+    const cpuColor = (typeof window !== 'undefined' && window.getComputedStyle)
+      ? (window.getComputedStyle(document.documentElement).getPropertyValue('--cpu').trim() || '#e11d48')
+      : '#e11d48';
 
-    // ─── 兜底机制：Jev 模式下若卡住 6 秒，切入系统规则兜底 ───
+    // ─── 1. 系统规则模式 (System Mode) 自主选择最优解与平滑切换 ───
+    if (this.cpuMode === 'system') {
+      const optimalPose = resolveOptimalPose(terrainData, cpu.x, tf);
+      const currentPose = cpu.poseName || 'round';
+
+      // 姿态需要切换为地形最优解
+      if (currentPose !== optimalPose) {
+        if (this.systemTargetPose !== optimalPose) {
+          this.systemTargetPose = optimalPose;
+          this.systemWaitTime = raceTime;
+        }
+
+        // 模拟 0.25 秒拟人化反应时间，然后立即变身
+        if (raceTime - this.systemWaitTime >= 0.25) {
+          cpu = replaceBody(cpu, CPU_POSES[optimalPose], cpuColor, tf.getTerrainH);
+          cpu.poseName = optimalPose;
+          cpu.speed = CPU_SPEED;
+          this.systemWaitTime = -1;
+          this.systemTargetPose = null;
+          this.onUpdateBadge?.(`⚙️ 规则(${this._getPoseLabel(optimalPose)})`);
+        }
+      } else {
+        this.systemWaitTime = -1;
+        this.systemTargetPose = null;
+      }
+
+      // 系统模式防卡阻脱困：若在同一处受阻超过 1.5 秒
+      if (this.cpuStuckDuration >= 1.5) {
+        this.cpuStuckDuration = 0;
+        this.cpuMaxX = cpu.x;
+        // 智能交替姿态并施加向上脱困冲量
+        const altPose = currentPose === 'long' ? 'climb' : (currentPose === 'round' ? 'long' : 'round');
+        cpu = replaceBody(cpu, CPU_POSES[altPose], cpuColor, tf.getTerrainH);
+        cpu.poseName = altPose;
+        cpu.speed = CPU_SPEED;
+        cpu.vy -= 30; // 跃起脱困
+        this.onUpdateBadge?.(`⚙️ 规则(脱困:${this._getPoseLabel(altPose)})`);
+      }
+
+      return cpu;
+    }
+
+    // ─── 2. 兜底机制：Jev 模式下若卡住 6 秒，切入系统规则兜底 ───
     if (this.cpuMode === 'jev' && !this.cpuInSystemFallback && this.cpuStuckDuration >= 6.0) {
       this.cpuInSystemFallback = true;
-      const systemPose = terrainData.CPU_PLAN[k]?.pose || 'long';
+      const systemPose = resolveOptimalPose(terrainData, cpu.x, tf);
       cpu = replaceBody(cpu, CPU_POSES[systemPose], cpuColor, tf.getTerrainH);
+      cpu.poseName = systemPose;
       cpu.speed = 1.0;
       this.cpuStuckDuration = 0;
       this.cpuMaxX = cpu.x;
-      this.onUpdateBadge?.('⚙️ 系统(兜底)');
+      this.onUpdateBadge?.(`⚙️ 系统(兜底:${this._getPoseLabel(systemPose)})`);
     }
 
     // ─── Qwen 模式卡住应急处理 ───
