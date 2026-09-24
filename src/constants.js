@@ -70,7 +70,7 @@ export const CPU_SPEED = 0.55;
 /** CPU 切换姿势前的反应延迟（秒） */
 export const CPU_DELAY = 3.0;
 
-// ─── 人体模板坐标（画板坐标系，300×180 画布，人物面朝右） ─────
+// ─── 人体模板与绘制限制常量（画板坐标系，300×180 画布，人物面朝右） ─────
 /** 头部：圆心坐标 + 半径 */
 export const HEAD     = { x: 150, y: 40,  r: 14 };
 
@@ -88,3 +88,15 @@ export const MAX_PER_JOINT = 1;
 
 /** 物理质点质量基准（每个采样点的质量） */
 export const M_PT = 100;
+
+// ─── 绘制尺寸限制（防止超大圆与超长直线破坏游戏平衡） ───────────
+/** 正圆最大半径（画板像素，防止超大轮子导致巨大线速度和跨图） */
+export const MAX_CIRCLE_RADIUS = 55;
+
+/** 正圆最小半径（画板像素） */
+export const MIN_CIRCLE_RADIUS = 6;
+
+/** 肢体笔划相对关节的最大跨度半径（画板像素，防止超长直线/巨型杠杆飞天开挂） */
+export const MAX_LIMB_RADIUS = 80;
+
+

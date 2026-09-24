@@ -284,16 +284,22 @@
     /* 模式选择卡片布局 */
     .mode-cards {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
       margin-bottom: 20px;
+    }
+
+    @media (max-width: 520px) {
+      .mode-cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
 
     .mode-card {
       background: rgba(255, 255, 255, 0.07);
       border: 1.5px solid rgba(255, 255, 255, 0.15);
       border-radius: 16px;
-      padding: 14px 8px;
+      padding: 12px 6px;
       cursor: pointer;
       transition: all 0.2s ease;
       text-align: center;
@@ -322,23 +328,29 @@
       box-shadow: 0 0 18px rgba(16, 185, 129, 0.35);
     }
 
+    .mode-card.selected.pvp-card {
+      border-color: rgba(56, 189, 248, 0.9);
+      background: rgba(56, 189, 248, 0.15);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+    }
+
     .mode-card .card-icon {
-      font-size: 28px;
-      margin-bottom: 8px;
+      font-size: 26px;
+      margin-bottom: 6px;
       line-height: 1;
     }
 
     .mode-card h3 {
       margin: 0 0 4px;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
     }
 
     .mode-card p {
       margin: 0;
-      font-size: 11px;
-      opacity: 0.6;
-      line-height: 1.4;
+      font-size: 10px;
+      opacity: 0.65;
+      line-height: 1.35;
     }
 
     /* API Key 配置区 */
@@ -421,6 +433,173 @@
       transition: width 0.15s ease;
     }
 
+    /* PvP 房间面板 */
+    #pvp-section {
+      margin-bottom: 16px;
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.4s ease, opacity 0.35s ease;
+      opacity: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      text-align: left;
+    }
+
+    #pvp-section.visible {
+      max-height: 320px;
+      opacity: 1;
+    }
+
+    .pvp-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pvp-input {
+      flex: 1;
+      box-sizing: border-box;
+      padding: 9px 12px;
+      border: 1.5px solid rgba(56, 189, 248, 0.5);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .pvp-input:focus {
+      border-color: rgba(56, 189, 248, 0.9);
+    }
+
+    .pvp-btn-sm {
+      padding: 9px 14px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.2s, transform 0.15s;
+    }
+
+    .pvp-btn-sm:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .pvp-btn-danger {
+      background: rgba(239, 68, 68, 0.25);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #fca5a5;
+    }
+
+    .pvp-btn-danger:hover {
+      background: rgba(239, 68, 68, 0.4);
+    }
+
+    .pvp-status-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .pvp-room-code-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      font-size: 14px;
+      color: #38bdf8;
+    }
+
+    .pvp-player-list {
+      display: flex;
+      justify-content: space-between;
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 12px;
+    }
+
+    .pvp-player-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pvp-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .pvp-dot.host {
+      background: #38bdf8;
+      box-shadow: 0 0 6px #38bdf8;
+    }
+
+    .pvp-dot.guest {
+      background: #f97316;
+      box-shadow: 0 0 6px #f97316;
+    }
+
+    .pvp-dot.waiting {
+      background: #94a3b8;
+      animation: qwenPulse 1.5s infinite;
+    }
+
+    /* PvP 开赛 3-2-1 全屏倒计时 */
+    #pvp-countdown {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 15, 30, 0.65);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    #pvp-countdown.hidden {
+      opacity: 0;
+      display: none;
+    }
+
+    .countdown-num {
+      font-size: clamp(64px, 18vw, 130px);
+      font-weight: 900;
+      color: #facc15;
+      text-shadow: 0 0 30px rgba(250, 204, 21, 0.8), 0 4px 20px rgba(0,0,0,0.6);
+      transform: scale(1.1);
+      animation: countPulse 0.85s infinite ease-out;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .countdown-sub {
+      font-size: 16px;
+      color: rgba(255, 255, 255, 0.8);
+      margin-top: 8px;
+      letter-spacing: 0.05em;
+    }
+
+    @keyframes countPulse {
+      0% { transform: scale(0.65); opacity: 0.3; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(1.0); opacity: 0.9; }
+    }
+
     /* 开始按鈕 */
     #start-btn {
       width: 100%;
@@ -478,6 +657,12 @@
           <h3>Qwen 手绘</h3>
           <p>WebLLM 自由点列<br>端侧大模型画肢体</p>
         </div>
+        <!-- 双人对决 卡片 -->
+        <div class="mode-card pvp-card" id="card-pvp" data-mode="pvp" role="radio" aria-checked="false" tabindex="0">
+          <div class="card-icon">👥</div>
+          <h3>双人对决</h3>
+          <p>实时房间联机<br>同种子随机赛道</p>
+        </div>
       </div>
 
       <!-- API Key 配置（选择 Jev 时展开） -->
@@ -495,8 +680,54 @@
         <div class="qwen-progress-bar"><div class="qwen-progress-inner" id="qwen-progress-inner"></div></div>
       </div>
 
+      <!-- 双人对决房间与联机大厅区（选择 PvP 时展开） -->
+      <div id="pvp-section">
+        <!-- 玩家昵称输入 -->
+        <div class="pvp-row">
+          <input id="pvp-nickname" class="pvp-input" type="text" placeholder="输入你的玩家昵称..." maxlength="10">
+        </div>
+
+        <!-- 未加入房间状态：创建与加入按钮 -->
+        <div id="pvp-lobby-actions" class="pvp-row">
+          <button id="pvp-create-btn" class="pvp-btn-sm" type="button" style="flex:1;">➕ 创建新房间</button>
+          <input id="pvp-code-input" class="pvp-input" type="text" placeholder="4位房间码" maxlength="4" style="max-width:96px;text-align:center;">
+          <button id="pvp-join-btn" class="pvp-btn-sm" type="button">加入房间</button>
+        </div>
+
+        <!-- 已加入房间状态：房间信息卡片 -->
+        <div id="pvp-room-info" class="pvp-status-box" style="display:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="pvp-room-code-badge" id="pvp-copy-code-trigger" title="点击复制房间码">
+              <span>🏠 房间码:</span>
+              <span id="pvp-room-code" style="letter-spacing:2px; font-size:16px;">----</span>
+              <small style="font-size:10px; opacity:0.7;">(点击复制)</small>
+            </span>
+            <button id="pvp-leave-btn" class="pvp-btn-sm pvp-btn-danger" type="button" style="padding:4px 8px; font-size:11px;">退出房间</button>
+          </div>
+          <div class="pvp-player-list">
+            <div class="pvp-player-item">
+              <span class="pvp-dot host"></span>
+              <span id="pvp-host-label">房主: 准备中</span>
+            </div>
+            <div class="pvp-player-item">
+              <span class="pvp-dot guest waiting" id="pvp-guest-dot"></span>
+              <span id="pvp-guest-label">对手: 等待加入...</span>
+            </div>
+          </div>
+          <div id="pvp-room-tip" style="font-size:11px; color:#38bdf8; text-align:center; margin-top:2px;">
+            等待挑战者输入房间码加入...
+          </div>
+        </div>
+      </div>
+
       <button id="start-btn" type="button">开始游戏 →</button>
     </div>
+  </div>
+
+  <!-- PvP 全屏倒计时 -->
+  <div id="pvp-countdown" class="hidden">
+    <div class="countdown-num" id="countdown-text">3</div>
+    <div class="countdown-sub">全速准备起跑！</div>
   </div>
 
   <!-- 左上方 WebLLM 响应与决策提示框 -->
@@ -531,6 +762,7 @@
 
   <script type="module">
     import { isWebGPUSupported, getOrInitWebLLMEngine } from '/src/llm/webllm.js';
+    import { netClient } from '/src/net/client.js';
 
     // ─── 引导覆盖层逻辑 ──────────────────────────────────────────
     const overlay = document.getElementById('start-overlay');
@@ -541,6 +773,20 @@
     const qwenLabel = document.getElementById('qwen-status-label');
     const qwenPct = document.getElementById('qwen-status-pct');
     const qwenProgress = document.getElementById('qwen-progress-inner');
+    const pvpSection = document.getElementById('pvp-section');
+    const pvpNicknameInput = document.getElementById('pvp-nickname');
+    const pvpCreateBtn = document.getElementById('pvp-create-btn');
+    const pvpJoinBtn = document.getElementById('pvp-join-btn');
+    const pvpCodeInput = document.getElementById('pvp-code-input');
+    const pvpLobbyActions = document.getElementById('pvp-lobby-actions');
+    const pvpRoomInfo = document.getElementById('pvp-room-info');
+    const pvpRoomCode = document.getElementById('pvp-room-code');
+    const pvpCopyCodeTrigger = document.getElementById('pvp-copy-code-trigger');
+    const pvpLeaveBtn = document.getElementById('pvp-leave-btn');
+    const pvpHostLabel = document.getElementById('pvp-host-label');
+    const pvpGuestLabel = document.getElementById('pvp-guest-label');
+    const pvpGuestDot = document.getElementById('pvp-guest-dot');
+    const pvpRoomTip = document.getElementById('pvp-room-tip');
     const startBtn = document.getElementById('start-btn');
     const aiBadge = document.getElementById('ai-badge');
     const hint = document.getElementById('hint');
@@ -550,6 +796,11 @@
     let selectedMode = 'system'; // 默认：规则对手
     let qwenModelReady = false;
     let qwenLoading = false;
+
+    // 初始化随机昵称
+    const defaultNick = '赛车手#' + Math.floor(100 + Math.random() * 900);
+    const savedNick = localStorage.getItem('pvp_nickname') || defaultNick;
+    if (pvpNicknameInput) pvpNicknameInput.value = savedNick;
 
     // 读取环境变量中的默认 Jev API Key（若 .env 中配置）
     const DEFAULT_JEV_API_KEY = (
@@ -623,16 +874,188 @@
       // 动态切换展开区
       apiSection.classList.toggle('visible', mode === 'jev');
       qwenSection.classList.toggle('visible', mode === 'qwen');
+      pvpSection.classList.toggle('visible', mode === 'pvp');
 
       if (mode === 'jev') {
         setTimeout(() => apiInput.focus(), 310);
       } else if (mode === 'qwen') {
         ensureQwenLoaded();
+      } else if (mode === 'pvp') {
+        if (window.__setGameConfig) window.__setGameConfig('pvp', '', '');
+        initPvPClient();
+        updatePvPStartButton();
+      } else {
+        if (window.__setGameConfig) window.__setGameConfig('system', '', '');
+        startBtn.disabled = false;
+        startBtn.textContent = '开始游戏 →';
       }
     }
 
-    // 「开始游戏」按钮
+    // ─── PvP 房间事件与信令对接 ──────────────────────────────────
+    let pvpState = {
+      inRoom: false,
+      roomId: null,
+      role: null,
+      hostName: '',
+      guestName: '',
+      isReady: false,
+    };
+
+    function getNickname() {
+      const val = pvpNicknameInput?.value.trim();
+      const nick = val || defaultNick;
+      localStorage.setItem('pvp_nickname', nick);
+      return nick;
+    }
+
+    async function initPvPClient() {
+      if (!netClient.isConnected) {
+        try {
+          await netClient.connect();
+        } catch (e) {
+          console.warn('连接 WebSocket 对决服务失败，请确保 npm run server 正在运行:', e);
+        }
+      }
+    }
+
+    function updatePvPStartButton() {
+      if (selectedMode !== 'pvp') return;
+      if (!pvpState.inRoom) {
+        startBtn.disabled = true;
+        startBtn.textContent = '请先创建或加入房间';
+      } else if (pvpState.role === 'host') {
+        if (pvpState.isReady) {
+          startBtn.disabled = false;
+          startBtn.textContent = '🏁 开始对决！';
+        } else {
+          startBtn.disabled = true;
+          startBtn.textContent = '⏳ 等待对手加入...';
+        }
+      } else if (pvpState.role === 'guest') {
+        startBtn.disabled = true;
+        startBtn.textContent = '⏳ 等待房主开始比赛...';
+      }
+    }
+
+    pvpCreateBtn?.addEventListener('click', async () => {
+      await initPvPClient();
+      if (!netClient.isConnected) {
+        alert('无法连接到对战服务器，请确认服务端已启动！');
+        return;
+      }
+      netClient.createRoom(getNickname(), 0);
+    });
+
+    pvpJoinBtn?.addEventListener('click', async () => {
+      const code = pvpCodeInput?.value.trim();
+      if (!code || code.length !== 4) {
+        alert('请输入正确的 4 位数字房间码');
+        return;
+      }
+      await initPvPClient();
+      if (!netClient.isConnected) {
+        alert('无法连接到对战服务器，请确认服务端已启动！');
+        return;
+      }
+      netClient.joinRoom(code, getNickname());
+    });
+
+    pvpLeaveBtn?.addEventListener('click', () => {
+      netClient.leaveRoom();
+      resetPvPUI();
+    });
+
+    pvpCopyCodeTrigger?.addEventListener('click', () => {
+      if (pvpState.roomId) {
+        navigator.clipboard?.writeText(pvpState.roomId).then(() => {
+          pvpRoomTip.textContent = '✅ 房间码已复制到剪贴板！快发给好友吧！';
+        }).catch(() => {});
+      }
+    });
+
+    function resetPvPUI() {
+      pvpState = { inRoom: false, roomId: null, role: null, hostName: '', guestName: '', isReady: false };
+      pvpLobbyActions.style.display = 'flex';
+      pvpRoomInfo.style.display = 'none';
+      pvpRoomCode.textContent = '----';
+      updatePvPStartButton();
+    }
+
+    // 监听网络信令
+    netClient.on('ROOM_CREATED', (data) => {
+      if (window.__setGameConfig) window.__setGameConfig('pvp', '', '');
+      pvpState.inRoom = true;
+      pvpState.roomId = data.roomId;
+      pvpState.role = 'host';
+      pvpState.hostName = data.hostName;
+      pvpState.isReady = false;
+
+      pvpLobbyActions.style.display = 'none';
+      pvpRoomInfo.style.display = 'flex';
+      pvpRoomCode.textContent = data.roomId;
+      pvpHostLabel.textContent = `房主: ${data.hostName} (你)`;
+      pvpGuestLabel.textContent = '对手: 等待加入...';
+      pvpGuestDot.className = 'pvp-dot guest waiting';
+      pvpRoomTip.textContent = '等待挑战者输入房间码加入...';
+      updatePvPStartButton();
+    });
+
+    netClient.on('JOIN_SUCCESS', (data) => {
+      if (window.__setGameConfig) window.__setGameConfig('pvp', '', '');
+      pvpState.inRoom = true;
+      pvpState.roomId = data.roomId;
+      pvpState.role = 'guest';
+      pvpState.hostName = data.hostName;
+      pvpState.guestName = data.guestName;
+      pvpState.isReady = true;
+
+      pvpLobbyActions.style.display = 'none';
+      pvpRoomInfo.style.display = 'flex';
+      pvpRoomCode.textContent = data.roomId;
+      pvpHostLabel.textContent = `房主: ${data.hostName}`;
+      pvpGuestLabel.textContent = `挑战者: ${data.guestName} (你)`;
+      pvpGuestDot.className = 'pvp-dot guest';
+      pvpRoomTip.textContent = '已成功进入房间，请等待房主开赛！';
+      updatePvPStartButton();
+    });
+
+    netClient.on('OPPONENT_JOINED', (data) => {
+      pvpState.guestName = data.guestName;
+      pvpState.isReady = true;
+      pvpGuestLabel.textContent = `对手: ${data.guestName}`;
+      pvpGuestDot.className = 'pvp-dot guest';
+      pvpRoomTip.textContent = '✅ 对手已就绪，点击下方「开始对决！」发车！';
+      updatePvPStartButton();
+    });
+
+    netClient.on('OPPONENT_LEFT', (data) => {
+      pvpState.guestName = '';
+      pvpState.isReady = false;
+      pvpGuestLabel.textContent = '对手: 等待加入...';
+      pvpGuestDot.className = 'pvp-dot guest waiting';
+      pvpRoomTip.textContent = data.message || '挑战者已离开房间，等待新玩家加入...';
+      updatePvPStartButton();
+    });
+
+    netClient.on('ROOM_CLOSED', (data) => {
+      alert(data.message || '房主已解散房间');
+      resetPvPUI();
+    });
+
+    netClient.on('ERROR', (data) => {
+      alert(data.message || '网络操作失败');
+    });
+
+    // 「开始游戏 / 开始对决」按钮
     startBtn.addEventListener('click', async () => {
+      if (selectedMode === 'pvp') {
+        if (window.__setGameConfig) window.__setGameConfig('pvp', '', '');
+        if (pvpState.role === 'host' && pvpState.isReady) {
+          netClient.startRace();
+        }
+        return;
+      }
+
       if (selectedMode === 'qwen' && !qwenModelReady) {
         if (!isWebGPUSupported()) {
           alert('当前浏览器不支持 WebGPU，无法运行端侧 Qwen 模型，将自动切换为规则对手。');
@@ -668,10 +1091,24 @@
       // 开始游戏后彻底移除提示文字，不再显示 hintDesc
       hint?.remove();
 
-      // 覆盖层淡出消失
+      // 覆盖层淡出隐藏（保留 DOM 便于对战结束后退回菜单）
       overlay.classList.add('fade-out');
-      setTimeout(() => overlay.remove(), 450);
+      setTimeout(() => {
+        overlay.style.display = 'none';
+        overlay.classList.remove('fade-out');
+      }, 450);
     });
+
+    window.__showStartOverlay = () => {
+      overlay.style.display = 'flex';
+      overlay.classList.remove('fade-out');
+      resetPvPUI();
+      selectMode('pvp');
+    };
+
+    window.__hideStartOverlay = () => {
+      overlay.style.display = 'none';
+    };
 
     // ─── 设备检测 & 移动端提示调整 ─────────────────────────────
     const isTouchDevice = navigator.maxTouchPoints > 0;
@@ -681,7 +1118,7 @@
     }
 
     // ─── 提示文字：首次触碰画板后隐藏 ─────────────────────────
-    pad.addEventListener('pointerdown', () => hint.classList.add('hidden'), { once: true });
+    pad.addEventListener('pointerdown', () => hint?.classList.add('hidden'), { once: true });
 
     // ─── 等待 drawpad 实例后安全绑定按钮 ────────────────────────
     function bindButtons() {

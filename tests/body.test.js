@@ -9,7 +9,10 @@
  */
 
 import { makeBody, replaceBody, placeAtStart } from '../src/body.js';
-import { SHOULDER, HIP, M_PT } from '../src/constants.js';
+import {
+  SHOULDER, HIP, M_PT, SCALE, T,
+  MAX_CIRCLE_RADIUS, MIN_CIRCLE_RADIUS, MAX_LIMB_RADIUS,
+} from '../src/constants.js';
 
 // ─── 辅助数据 ──────────────────────────────────────────────────
 
@@ -22,6 +25,7 @@ const ARM_STROKE = [
   { x: SHOULDER.x + 30, y: SHOULDER.y },
   { x: SHOULDER.x + 60, y: SHOULDER.y },
 ];
+
 
 /** 简单腿部笔划：髋关节出发，向下延伸 */
 const LEG_STROKE = [
@@ -177,3 +181,37 @@ describe('placeAtStart() 放置到起点', () => {
     expect(b.y).toBeLessThan(groundY);
   });
 });
+
+// ─── 肢体尺寸限制与防作弊测试 ─────────────────────────────────
+
+describe('肢体尺寸限制（防作弊）', () => {
+  test('导出合理的绘制限制常量', () => {
+    expect(MAX_CIRCLE_RADIUS).toBe(55);
+    expect(MIN_CIRCLE_RADIUS).toBe(6);
+    expect(MAX_LIMB_RADIUS).toBe(80);
+    expect(MAX_CIRCLE_RADIUS).toBeLessThanOrEqual(MAX_LIMB_RADIUS);
+  });
+
+  test('传入超长笔划（如跨画板的 200px 直线）时，makeBody 自动截断到 MAX_LIMB_RADIUS', () => {
+    // 构造超长手臂笔划（从肩部向右延伸 200 像素，远大于 80）
+    const OVERSIZED_ARM = [
+      SHOULDER,
+      { x: SHOULDER.x + 100, y: SHOULDER.y },
+      { x: SHOULDER.x + 200, y: SHOULDER.y },
+    ];
+
+    const body = makeBody({ arm: [OVERSIZED_ARM], leg: [] }, 'red');
+    const shoulderJoint = body.joints[0];
+
+    // 关节的碰撞半径 rad 应被限制在 (MAX_LIMB_RADIUS * SCALE + T) 左右
+    const expectedMaxRad = MAX_LIMB_RADIUS * SCALE + T;
+    expect(shoulderJoint.rad).toBeLessThanOrEqual(expectedMaxRad + 0.1);
+
+    // 检查所有质点相对关节中心的世界坐标距离
+    for (const pt of shoulderJoint.pts) {
+      const d = Math.hypot(pt.x, pt.y);
+      expect(d).toBeLessThanOrEqual(MAX_LIMB_RADIUS * SCALE + 0.01);
+    }
+  });
+});
+

@@ -14,7 +14,10 @@
  *   清除按钮       清空所有笔划
  */
 
-import { SHOULDER, HIP, HEAD, TORSO, MAX_PER_JOINT } from './constants.js';
+import {
+  SHOULDER, HIP, HEAD, TORSO, MAX_PER_JOINT,
+  MAX_CIRCLE_RADIUS, MIN_CIRCLE_RADIUS, MAX_LIMB_RADIUS,
+} from './constants.js';
 import { dist } from './physics.js';
 
 // ─── 辅助：绘制折线 ────────────────────────────────────────────
@@ -76,11 +79,17 @@ export class Drawpad {
      * circleCenter: 圆心关节坐标
      * circleKind:   'arm' | 'leg'
      * circleRadius: 当前预览半径
+     * circleAtMax:  是否已达到最大半径
      */
     this.circleMode   = false;
     this.circleCenter = null;
     this.circleKind   = null;
     this.circleRadius = 0;
+    this.circleAtMax  = false;
+
+    /** 自由绘制模式状态 */
+    this.strokeAtMax  = false;
+    this.activeJoint  = null;
 
     this._bindEvents();
   }
@@ -111,13 +120,26 @@ export class Drawpad {
   }
 
   /**
-   * 完成一条自由笔划：将起点平移到最近关节，然后添加
+   * 完成一条自由笔划：将起点平移到最近关节，同时做最大尺寸限制截断
    */
   _finishFreeStroke(stroke) {
     if (stroke.length < 3) return;
     const { joint, kind } = this._nearestJoint(stroke[0]);
     const dx = joint.x - stroke[0].x, dy = joint.y - stroke[0].y;
-    const limb = stroke.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    // 平移并严格限制点到关节的距离 <= MAX_LIMB_RADIUS
+    const limb = stroke.map(p => {
+      const nx = p.x + dx;
+      const ny = p.y + dy;
+      const d = dist({ x: nx, y: ny }, joint);
+      if (d > MAX_LIMB_RADIUS) {
+        const ratio = MAX_LIMB_RADIUS / d;
+        return {
+          x: joint.x + (nx - joint.x) * ratio,
+          y: joint.y + (ny - joint.y) * ratio,
+        };
+      }
+      return { x: nx, y: ny };
+    });
     this._addStroke(kind, limb);
   }
 
@@ -161,6 +183,8 @@ export class Drawpad {
     this.circleCenter = joint;
     this.circleKind   = kind;
     this.circleRadius = 20; // 初始预览半径
+    this.circleAtMax  = false;
+    this.activeJoint  = joint;
   }
 
   // ─── 事件绑定 ──────────────────────────────────────────────────
@@ -182,6 +206,10 @@ export class Drawpad {
       canvas.setPointerCapture(e.pointerId);
       pointerStartPos = pos;
       this.drawing = true;
+      this.circleAtMax = false;
+      this.strokeAtMax = false;
+      const { joint } = this._nearestJoint(pos);
+      this.activeJoint = joint;
 
       if (e.shiftKey) {
         // ── 桌面端：Shift + 拖拽 → 立即进入正圆模式 ──
@@ -210,8 +238,10 @@ export class Drawpad {
       const pos = this._padPos(e);
 
       if (this.circleMode) {
-        // 正圆模式：拖拽距离 = 半径
-        this.circleRadius = Math.max(5, dist(pos, this.circleCenter));
+        // 正圆模式：限制半径在 [MIN_CIRCLE_RADIUS, MAX_CIRCLE_RADIUS]
+        const rawRadius = dist(pos, this.circleCenter);
+        this.circleRadius = Math.max(MIN_CIRCLE_RADIUS, Math.min(MAX_CIRCLE_RADIUS, rawRadius));
+        this.circleAtMax  = rawRadius >= MAX_CIRCLE_RADIUS;
       } else {
         // 自由模式：移动超出 8px 则取消长按（防误触）
         if (longPressTimer && dist(pos, pointerStartPos) > 8) {
@@ -219,8 +249,26 @@ export class Drawpad {
         }
         // 超出边界时暂停（回来后直线连接）
         if (pos.x < 0 || pos.y < 0 || pos.x > canvas.width || pos.y > canvas.height) return;
-        if (dist(pos, this.stroke[this.stroke.length - 1]) > 4) {
-          this.stroke.push(pos);
+
+        // 限制当前点相对起始点距离不超过 MAX_LIMB_RADIUS（防止画出超长直线开挂）
+        let currentPos = pos;
+        if (this.stroke.length > 0) {
+          const start = this.stroke[0];
+          const d = dist(pos, start);
+          if (d > MAX_LIMB_RADIUS) {
+            this.strokeAtMax = true;
+            const ratio = MAX_LIMB_RADIUS / d;
+            currentPos = {
+              x: start.x + (pos.x - start.x) * ratio,
+              y: start.y + (pos.y - start.y) * ratio,
+            };
+          } else {
+            this.strokeAtMax = false;
+          }
+        }
+
+        if (dist(currentPos, this.stroke[this.stroke.length - 1]) > 4) {
+          this.stroke.push(currentPos);
         }
       }
       this.draw();
@@ -230,16 +278,19 @@ export class Drawpad {
       cancelLongPress(); // 确保定时器已清除
       if (!this.drawing) return;
       this.drawing = false;
+      this.strokeAtMax = false;
+      this.activeJoint = null;
 
       if (this.circleMode) {
-        // 松开：以当前半径生成正圆
-        if (this.circleRadius >= 5) {
+        // 松开：以当前受限半径生成正圆
+        if (this.circleRadius >= MIN_CIRCLE_RADIUS) {
           const stroke = makeCircleStroke(this.circleCenter, this.circleRadius);
           this._addStroke(this.circleKind, stroke);
         }
         this.circleMode   = false;
         this.circleCenter = null;
         this.circleRadius = 0;
+        this.circleAtMax  = false;
       } else {
         this._finishFreeStroke(this.stroke);
         this.stroke = [];
@@ -255,22 +306,46 @@ export class Drawpad {
 
   /**
    * 重新渲染画板
-   * 内容：人体模板 + 已绘笔划 + 当前笔划/正圆预览 + 淡色操作提示
+   * 内容：人体模板 + 绘制限制范围指引 + 已绘笔划 + 预览 + 提示
    */
   draw() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
-    const inkColor    = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
-    const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim();
+    const inkColor    = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#333';
+    const playerColor = getComputedStyle(document.documentElement).getPropertyValue('--player').trim() || '#2563eb';
+
+    // ── 关节允许活动范围引导圈（优雅半透明虚线，展示合法区域） ──
+    for (const j of [SHOULDER, HIP]) {
+      const isActive = this.drawing && this.activeJoint === j;
+      const isWarn   = isActive && (this.circleAtMax || this.strokeAtMax);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, MAX_LIMB_RADIUS, 0, Math.PI * 2);
+      ctx.setLineDash([3, 4]);
+      if (isWarn) {
+        ctx.strokeStyle = '#ef4444';
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth   = 2;
+      } else if (isActive) {
+        ctx.strokeStyle = playerColor;
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth   = 1.5;
+      } else {
+        ctx.strokeStyle = inkColor;
+        ctx.globalAlpha = 0.08;
+        ctx.lineWidth   = 1;
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // ── 淡色操作提示水印（始终显示，不绘制时最明显，绘制时淡出） ──
-    // 当画板有笔划时降低透明度（已经懂了，不再需要提示）
     const hasStrokes = this.limbs.arm.length + this.limbs.leg.length > 0;
     const hintAlpha  = this.drawing ? 0.04 : hasStrokes ? 0.08 : 0.18;
     const isTouchDev = navigator.maxTouchPoints > 0;
-    const hintText   = isTouchDev ? '长按 → 正圆' : 'Shift + 拖拽 → 正圆';
+    const hintText   = isTouchDev ? '长按 → 正圆 (最大半径受限)' : 'Shift + 拖拽 → 正圆 (带尺寸限制)';
 
     ctx.save();
     ctx.globalAlpha = hintAlpha;
@@ -299,32 +374,61 @@ export class Drawpad {
 
     // ── 预览 ──
     if (this.circleMode && this.circleCenter) {
-      // 正圆预览：虚线圆 + 半径辅助线
+      // 正圆预览：虚线圆 + 半径辅助线 + 最大限制警告
       ctx.save();
-      ctx.globalAlpha = 0.5;
-      ctx.strokeStyle = playerColor; ctx.lineWidth = 3;
+      const warn = this.circleAtMax;
+      ctx.strokeStyle = warn ? '#ef4444' : playerColor;
+      ctx.lineWidth   = warn ? 3.5 : 3;
+      ctx.globalAlpha = warn ? 0.85 : 0.55;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
       ctx.arc(this.circleCenter.x, this.circleCenter.y, this.circleRadius, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+
       // 半径辅助线（细线）
-      ctx.strokeStyle = inkColor; ctx.lineWidth = 1;
+      ctx.strokeStyle = warn ? '#ef4444' : inkColor;
+      ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(this.circleCenter.x, this.circleCenter.y);
       ctx.lineTo(this.circleCenter.x + this.circleRadius, this.circleCenter.y);
       ctx.stroke();
-      // 半径数字（小字）
-      ctx.fillStyle = inkColor; ctx.font = '10px sans-serif';
-      ctx.textAlign = 'left'; ctx.globalAlpha = 0.7;
-      ctx.fillText(`r ${Math.round(this.circleRadius)}`, this.circleCenter.x + 4, this.circleCenter.y - 4);
+
+      // 半径数字与上限提示
+      ctx.fillStyle = warn ? '#ef4444' : inkColor;
+      ctx.font      = warn ? 'bold 11px sans-serif' : '10px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.globalAlpha = warn ? 0.95 : 0.7;
+      const label = warn
+        ? `r ${Math.round(this.circleRadius)} (已达上限)`
+        : `r ${Math.round(this.circleRadius)}`;
+      ctx.fillText(label, this.circleCenter.x + 4, this.circleCenter.y - 4);
       ctx.restore();
     } else if (!this.circleMode && this.stroke.length >= 2) {
-      // 自由笔划预览（半透明）
-      ctx.globalAlpha = 0.45;
-      strokePath(ctx, this.stroke);
-      ctx.globalAlpha = 1;
+      // 自由笔划预览
+      ctx.save();
+      if (this.strokeAtMax) {
+        ctx.strokeStyle = '#ef4444';
+        ctx.globalAlpha = 0.8;
+        ctx.lineWidth   = 5;
+        strokePath(ctx, this.stroke);
+
+        const lastPt = this.stroke[this.stroke.length - 1];
+        ctx.beginPath();
+        ctx.arc(lastPt.x, lastPt.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+        ctx.font = '10px sans-serif';
+        ctx.fillText('已达最大跨度', lastPt.x + 6, lastPt.y - 2);
+      } else {
+        ctx.strokeStyle = playerColor;
+        ctx.globalAlpha = 0.45;
+        ctx.lineWidth   = 5;
+        strokePath(ctx, this.stroke);
+      }
+      ctx.restore();
     }
     ctx.textAlign = 'left'; // 还原默认对齐
   }
 }
+

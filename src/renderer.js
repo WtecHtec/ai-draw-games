@@ -109,7 +109,7 @@ export function drawBody(ctx, b, alpha = 1) {
  *     STAGES, POOL }
  */
 export function render(ctx, state) {
-  const { player, cpu, raceTime, stage, result, hud, dpr, terrainData, STAGES, POOL, STAGE_NAMES } = state;
+  const { player, cpu, raceTime, stage, result, hud, dpr, terrainData, STAGES, POOL, STAGE_NAMES, mainButtonLabel } = state;
   const { TP, CPL, SECTIONS, FINISH_X } = terrainData;
   const W = ctx.canvas.width, H = ctx.canvas.height;
 
@@ -512,9 +512,10 @@ export function render(ctx, state) {
 
     // 按钮（重试 / 下一关，分享）
     const bBtnW = pw - 48, bBtnH = 40;
-    const mainLabel = result === 'WIN'
+    const defaultLabel = result === 'WIN'
       ? (stage + 1 < STAGES.length ? '下一关 →' : '重回第1关')
       : '再来一次';
+    const mainLabel = mainButtonLabel || defaultLabel;
 
     hud.restart = { x: px + 24, y: py + 164, w: bBtnW, h: bBtnH };
     hud.share   = { x: px + 24, y: py + 212, w: bBtnW, h: bBtnH };

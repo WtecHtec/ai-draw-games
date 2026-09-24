@@ -13,6 +13,7 @@
 import {
   T, SCALE, M_PT,
   HEAD, SHOULDER, HIP, TORSO,
+  MAX_LIMB_RADIUS,
 } from './constants.js';
 import { samplePolyline, dist } from './physics.js';
 
@@ -65,12 +66,27 @@ export function makeBody(limbs, color) {
 
   // ── 构建关节（肩 / 髋） ──
   const joints = [];
-  for (const [jointPt, strokes] of [[SHOULDER, limbs.arm], [HIP, limbs.leg]]) {
+  for (const [jointPt, rawStrokes] of [[SHOULDER, limbs.arm || []], [HIP, limbs.leg || []]]) {
     const o   = tf(jointPt); // 关节在世界坐标系中的偏移（相对质心）
     const rel = p => ({      // 画板坐标 → 相对关节中心的世界坐标
       x: (p.x - jointPt.x) * SCALE,
       y: (p.y - jointPt.y) * SCALE,
     });
+
+    // 肢体尺寸安全限制防御：防止通过外部数据或作弊注入超长肢体
+    const strokes = (rawStrokes || []).map(st =>
+      st.map(p => {
+        const d = dist(p, jointPt);
+        if (d > MAX_LIMB_RADIUS) {
+          const ratio = MAX_LIMB_RADIUS / d;
+          return {
+            x: jointPt.x + (p.x - jointPt.x) * ratio,
+            y: jointPt.y + (p.y - jointPt.y) * ratio,
+          };
+        }
+        return p;
+      })
+    );
 
     // 每条笔划 + 其 180° 旋转镜像（产生对称的另一侧手脚）
     const mirrored = strokes.map(st =>

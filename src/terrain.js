@@ -69,11 +69,28 @@ export const STAGES = [
  */
 export const STAGE_NAMES = ['新手', '初级', '中级', '高级', '大师'];
 
+/**
+ * 确定性伪随机数发生器（Mulberry32 算法）
+ * 确保多房间对战时，输入相同 seed 即可在两端生成 100% 严格一致的随机赛道
+ * @param {number} seed - 种子数字
+ * @returns {() => number} 返回 [0, 1) 浮点随机数
+ */
+export function createSeededRandom(seed = 123456) {
+  let s = (typeof seed === 'number' && isFinite(seed) ? seed : 123456) >>> 0;
+  return function rng() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // ─── 地形构建 ──────────────────────────────────────────────────
 /**
- * 根据关卡序号构建完整地形数据
+ * 根据关卡序号与可选随机种子构建完整地形数据
  *
  * @param {number} stage - 关卡序号（0-based）
+ * @param {object|number} [options] - 配置对象 { seed?: number } 或直接传入 seed 数值
  * @returns {{
  *   HA: number[],        高度图（地面 Y 坐标数组）
  *   CE: number[],        天花板图（无天花板处为 -Infinity）
@@ -81,12 +98,21 @@ export const STAGE_NAMES = ['新手', '初级', '中级', '高级', '大师'];
  *   SF: (object|null)[], 地面属性图（null = 普通，{belt,mu,mud}）
  *   TP: {x,y}[],        地形点列（用于最近点碰撞）
  *   CPL: {x,y}[],       天花板点列
- *   SECTIONS: object[], 可视区段信息（label, from, to, type）
+ *   SECTIONS: object[], 可视区段信息（label, from, to, type, ...）
  *   CPU_PLAN: object[], CPU 姿势切换计划
- *   FINISH_X: number    终点 X 坐标
+ *   FINISH_X: number,   终点 X 坐标
+ *   seed: number        生成的种子
  * }}
  */
-export function buildCourse(stage) {
+export function buildCourse(stage, options = {}) {
+  const parsedSeed = (typeof options === 'object' && options !== null && options.seed !== undefined)
+    ? options.seed
+    : (typeof options === 'number' ? options : undefined);
+
+  // 若传入 seed，使用确定性伪随机发生器；否则默认生成随机种子
+  const seed = parsedSeed !== undefined ? (parsedSeed >>> 0) : Math.floor(Math.random() * 0xFFFFFFFF);
+  const rnd = createSeededRandom(seed);
+
   const HA = [];   // 地面高度数组
   const CE = [];   // 天花板高度数组
   const WL = [];   // 水位数组
@@ -96,10 +122,11 @@ export function buildCourse(stage) {
 
   // 构建课程：前置平地 → 各区段 + 过渡平地 → 末尾平地（带平滑随机缓冲）
   const course = [{ type: 'flat', len: 350 }];
-  for (const type of STAGES[stage]) {
+  const stageSections = STAGES[stage] ?? STAGES[0];
+  for (const type of stageSections) {
     const proto = POOL.find(c => c.type === type);
     course.push({ ...proto });
-    course.push({ type: 'flat', len: Math.round(90 + Math.random() * 60) });
+    course.push({ type: 'flat', len: Math.round(90 + rnd() * 60) });
   }
   course.push({ type: 'flat', len: 80 });
 
@@ -142,14 +169,14 @@ export function buildCourse(stage) {
 
     } else if (c.type === 'hills') {
       // 丘陵：正弦叠加起伏（引入随机频率、相位与振幅，每次比赛起伏曲线独一无二）
-      const L = Math.round(c.len * (0.9 + Math.random() * 0.25));
+      const L = Math.round(c.len * (0.9 + rnd() * 0.25));
       const y0 = y;
-      const f1 = 170 + Math.random() * 40;
-      const f2 = 70 + Math.random() * 20;
-      const p1 = Math.random() * Math.PI * 2;
-      const p2 = Math.random() * Math.PI * 2;
-      const a1 = 26 + Math.random() * 10;
-      const a2 = 10 + Math.random() * 5;
+      const f1 = 170 + rnd() * 40;
+      const f2 = 70 + rnd() * 20;
+      const p1 = rnd() * Math.PI * 2;
+      const p2 = rnd() * Math.PI * 2;
+      const a1 = 26 + rnd() * 10;
+      const a2 = 10 + rnd() * 5;
       const hillF = t =>
         a1 * Math.sin(t / f1 + p1) +
         a2 * Math.sin(t / f2 + p2) +
@@ -159,23 +186,23 @@ export function buildCourse(stage) {
     } else if (c.type === 'bumps') {
       // 颠簸路：小幅余弦波（随机抖动振幅与波长）
       const y0 = y;
-      const amp = c.amp * (0.85 + Math.random() * 0.35);
-      const period = c.period * (0.9 + Math.random() * 0.2);
-      const bLen = Math.round(c.len * (0.9 + Math.random() * 0.25));
+      const amp = c.amp * (0.85 + rnd() * 0.35);
+      const period = c.period * (0.9 + rnd() * 0.2);
+      const bLen = Math.round(c.len * (0.9 + rnd() * 0.25));
       push(bLen, t => y0 - amp * (1 - Math.cos(t / period * Math.PI * 2)) / 2);
 
     } else if (c.type === 'wave') {
       // 大波浪：单个半余弦波（随机波长与波高）
       const y0 = y;
-      const L = Math.round(c.len * (0.9 + Math.random() * 0.25));
-      const dh = c.dh * (0.85 + Math.random() * 0.3);
+      const L = Math.round(c.len * (0.9 + rnd() * 0.25));
+      const dh = c.dh * (0.85 + rnd() * 0.3);
       push(L, t => y0 - dh * (1 - Math.cos(t / L * Math.PI * 2)) / 2);
 
     } else if (c.type === 'sawtooth') {
       // 锯齿坡：多段线性上坡（随机步数与坡度）
-      const n = Math.min(6, Math.max(3, Math.round(c.n + (Math.random() > 0.5 ? 1 : 0))));
-      const sLen = Math.round(c.len * (0.9 + Math.random() * 0.25));
-      const sH = c.h * (0.85 + Math.random() * 0.3);
+      const n = Math.min(6, Math.max(3, Math.round(c.n + (rnd() > 0.5 ? 1 : 0))));
+      const sLen = Math.round(c.len * (0.9 + rnd() * 0.25));
+      const sH = c.h * (0.85 + rnd() * 0.3);
       for (let k = 0; k < n; k++) {
         const y0 = y;
         push(sLen, t => y0 - sH * t / sLen);
@@ -184,22 +211,22 @@ export function buildCourse(stage) {
     } else if (c.type === 'steep') {
       // 急坡：线性下坡（随机坡长与落差）
       const y0 = y;
-      const L = Math.round(c.len * (0.9 + Math.random() * 0.25));
-      const dh = c.dh * (0.85 + Math.random() * 0.3);
+      const L = Math.round(c.len * (0.9 + rnd() * 0.25));
+      const dh = c.dh * (0.85 + rnd() * 0.3);
       push(L, t => y0 + dh * t / L);
       y += dh;
 
     } else if (c.type === 'cliff') {
       // 跳崖：突然下降一个高度差（随机高度落差）
-      const dh = c.dh * (0.85 + Math.random() * 0.3);
+      const dh = c.dh * (0.85 + rnd() * 0.3);
       push(40, () => y);
       y += dh;
       push(40, () => y);
 
     } else if (c.type === 'stairs') {
       // 阶梯：多级台阶，之后缓坡恢复原高度（随机阶数与台阶宽度）
-      const n = Math.min(5, Math.max(3, Math.round(c.n + (Math.random() > 0.5 ? 1 : 0))));
-      const gap = Math.round(c.gap * (0.9 + Math.random() * 0.25));
+      const n = Math.min(5, Math.max(3, Math.round(c.n + (rnd() > 0.5 ? 1 : 0))));
+      const gap = Math.round(c.gap * (0.9 + rnd() * 0.25));
       for (let k = 0; k < n; k++) {
         y -= c.h;
         push(gap, () => y);
@@ -211,10 +238,10 @@ export function buildCourse(stage) {
     } else if (c.type === 'pits') {
       // 小坑：多个沟槽（随机坑数、坑宽与深度）
       const y0 = y;
-      const n = Math.min(4, Math.max(2, Math.round(c.n + (Math.random() > 0.5 ? 1 : 0))));
-      const pw = Math.round(c.w * (0.85 + Math.random() * 0.3));
-      const pd = Math.round(c.d * (0.85 + Math.random() * 0.3));
-      const pgap = Math.round(c.gap * (0.85 + Math.random() * 0.3));
+      const n = Math.min(4, Math.max(2, Math.round(c.n + (rnd() > 0.5 ? 1 : 0))));
+      const pw = Math.round(c.w * (0.85 + rnd() * 0.3));
+      const pd = Math.round(c.d * (0.85 + rnd() * 0.3));
+      const pgap = Math.round(c.gap * (0.85 + rnd() * 0.3));
       for (let k = 0; k < n; k++) {
         push(pgap, () => y0);
         push(pw,   () => y0 + pd);
@@ -224,8 +251,8 @@ export function buildCourse(stage) {
     } else if (c.type === 'bigpit') {
       // 大坑：单个宽深沟槽（随机坑宽与深度）
       const y0 = y;
-      const pw = Math.round(c.w * (0.85 + Math.random() * 0.3));
-      const pd = Math.round(c.d * (0.85 + Math.random() * 0.3));
+      const pw = Math.round(c.w * (0.85 + rnd() * 0.3));
+      const pd = Math.round(c.d * (0.85 + rnd() * 0.3));
       push(80,   () => y0);
       push(pw,  () => y0 + pd);
       push(80,   () => y0);
@@ -233,7 +260,7 @@ export function buildCourse(stage) {
     } else if (c.type === 'tunnel') {
       // 隧道：有天花板的平地区段（随机隧道长度）
       const y0 = y;
-      const tLen = Math.round(c.len * (0.9 + Math.random() * 0.3));
+      const tLen = Math.round(c.len * (0.9 + rnd() * 0.3));
       push(60,    () => y0);
       push(tLen, () => y0, () => y0 - TUNNEL_H);
       push(60,    () => y0);
@@ -241,8 +268,8 @@ export function buildCourse(stage) {
     } else if (c.type === 'hurdles') {
       // 跨栏：多个凸起障碍（随机数量与间距）
       const y0 = y;
-      const n = Math.min(5, Math.max(3, Math.round(c.n + (Math.random() > 0.5 ? 1 : 0))));
-      const hgap = Math.round(c.gap * (0.85 + Math.random() * 0.3));
+      const n = Math.min(5, Math.max(3, Math.round(c.n + (rnd() > 0.5 ? 1 : 0))));
+      const hgap = Math.round(c.gap * (0.85 + rnd() * 0.3));
       for (let k = 0; k < n; k++) {
         push(hgap, () => y0);
         push(c.w,   () => y0 - c.h);
@@ -251,7 +278,7 @@ export function buildCourse(stage) {
 
     } else if (c.type === 'wall') {
       // 高墙：需要攀爬的陡峭台阶（随机墙高）
-      const wh = Math.round(c.h * (0.9 + Math.random() * 0.2));
+      const wh = Math.round(c.h * (0.9 + rnd() * 0.2));
       push(60, () => y);
       y -= wh;
       push(160, () => y);
@@ -262,8 +289,8 @@ export function buildCourse(stage) {
     } else if (c.type === 'climb') {
       // 天花板+墙：低隧道后紧接高墙（随机隧道长与墙高）
       const y0 = y;
-      const ch = Math.round(c.h * (0.9 + Math.random() * 0.2));
-      const cTunnel = Math.round(c.tunnel * (0.9 + Math.random() * 0.25));
+      const ch = Math.round(c.h * (0.9 + rnd() * 0.2));
+      const cTunnel = Math.round(c.tunnel * (0.9 + rnd() * 0.25));
       push(60, () => y0);
       push(cTunnel, () => y0, () => y0 - TUNNEL_H);
       push(180, () => y0);
@@ -276,8 +303,8 @@ export function buildCourse(stage) {
 
     } else if (c.type === 'belt') {
       // 逆向传送带：地面向后流动（随机流速与长度）
-      const bSpeed = -Math.round(160 + Math.random() * 90);
-      const bLen = Math.round(c.len * (0.9 + Math.random() * 0.25));
+      const bSpeed = -Math.round(160 + rnd() * 90);
+      const bLen = Math.round(c.len * (0.9 + rnd() * 0.25));
       c.speed = bSpeed;
       c.len = bLen;
       surf = { belt: bSpeed };
@@ -287,9 +314,9 @@ export function buildCourse(stage) {
     } else if (c.type === 'ice') {
       // 冰坡：低摩擦上坡（随机摩擦系数与坡度）
       const y0 = y;
-      const L = Math.round(c.len * (0.9 + Math.random() * 0.25));
-      const dh = c.dh * (0.85 + Math.random() * 0.3);
-      const mu = Number((0.2 + Math.random() * 0.15).toFixed(2));
+      const L = Math.round(c.len * (0.9 + rnd() * 0.25));
+      const dh = c.dh * (0.85 + rnd() * 0.3);
+      const mu = Number((0.2 + rnd() * 0.15).toFixed(2));
       surf = { mu };
       push(L, t => y0 + dh * t / L);
       surf = null;
@@ -298,8 +325,8 @@ export function buildCourse(stage) {
     } else if (c.type === 'mud') {
       // 泥沼：向下沉（随机泥沼长度与深度）
       const y0 = y;
-      const mLen = Math.round(c.len * (0.9 + Math.random() * 0.25));
-      const md = Math.round(c.d * (0.85 + Math.random() * 0.3));
+      const mLen = Math.round(c.len * (0.9 + rnd() * 0.25));
+      const md = Math.round(c.d * (0.85 + rnd() * 0.3));
       surf = { mud: true };
       push(60,          t => y0 + md * t / 60,           null, y0);
       push(mLen - 180,  () => y0 + md,                   null, y0);
@@ -309,8 +336,8 @@ export function buildCourse(stage) {
     } else if (c.type === 'water') {
       // 水池：深水区（随机水深与水域长度）
       const y0 = y;
-      const wLen = Math.round(c.len * (0.9 + Math.random() * 0.25));
-      const d = Math.round(c.d * (0.85 + Math.random() * 0.3));
+      const wLen = Math.round(c.len * (0.9 + rnd() * 0.25));
+      const d = Math.round(c.d * (0.85 + rnd() * 0.3));
       push(60,          t => y0 + d * t / 60,          null, y0);
       push(wLen - 360,  () => y0 + d,                  null, y0);
       push(300,         t => y0 + d * (1 - t / 300),   null, y0);
@@ -354,7 +381,7 @@ export function buildCourse(stage) {
   const TP  = HA.map((yy, i) => ({ x: i * TSTEP, y: yy }));
   const CPL = CE.map((yy, i) => ({ x: i * TSTEP, y: yy > -Infinity ? yy : -3000 }));
 
-  return { HA, CE, WL, SF, TP, CPL, SECTIONS, CPU_PLAN, FINISH_X };
+  return { HA, CE, WL, SF, TP, CPL, SECTIONS, CPU_PLAN, FINISH_X, seed };
 }
 
 // ─── 查询函数（纯函数，便于单元测试） ────────────────────────────

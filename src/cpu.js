@@ -71,7 +71,7 @@ export const CPU_SMALL = {
  * 适合：高墙、天花板+墙组合
  */
 export const CPU_CLIMB = {
-  arm: [[ SHOULDER, { x: 250, y: 62 } ]],
+  arm: [[ SHOULDER, { x: 230, y: 62 } ]],
   leg: CPU_SMALL.leg,
 };
 

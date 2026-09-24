@@ -180,3 +180,27 @@ describe('terrainIndex(TP, x) 地形索引', () => {
     expect(terrainIndex(TP, -5)).toBe(0);
   });
 });
+
+// ─── createSeededRandom & buildCourse 确定性种子同步测试 ───────
+
+describe('确定性种子地图生成', () => {
+  const { createSeededRandom } = require('../src/terrain.js');
+
+  test('createSeededRandom 相同种子产生相同随机数序列', () => {
+    const rng1 = createSeededRandom(8888);
+    const rng2 = createSeededRandom(8888);
+    for (let i = 0; i < 20; i++) {
+      expect(rng1()).toBe(rng2());
+    }
+  });
+
+  test('buildCourse 输入相同 seed 生成 100% 相同的高度图与终点', () => {
+    const t1 = buildCourse(1, { seed: 654321 });
+    const t2 = buildCourse(1, { seed: 654321 });
+    expect(t1.FINISH_X).toBe(t2.FINISH_X);
+    expect(t1.HA.length).toBe(t2.HA.length);
+    expect(t1.HA).toEqual(t2.HA);
+    expect(t1.SECTIONS.length).toBe(t2.SECTIONS.length);
+  });
+});
+
